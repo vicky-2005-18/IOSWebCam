@@ -4,13 +4,25 @@ from flask import Flask, render_template
 from flask_socketio import SocketIO
 import pyvirtualcam
 import atexit
+import threading
+import queue
+import time
 
 app = Flask(__name__)
-socketio = SocketIO(app, cors_allowed_origins="*")
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
 
 frame_count = 0
 client_count = 0
 cam = None
+frame_queue = queue.Queue(maxsize=30)  # Limit queue to prevent memory overflow
+fps_counter = 0
+last_fps_time = time.time()
+current_fps = 0
+
+# Telemetry
+bandwidth_counter = 0
+last_bandwidth_time = time.time()
+current_bandwidth = 0  # in Mbps
 
 def cleanup():
     """Cleanup function to close virtual camera on shutdown."""
@@ -21,6 +33,82 @@ def cleanup():
         cam = None
 
 atexit.register(cleanup)
+
+def frame_worker():
+    """Worker thread to process frames asynchronously."""
+    global frame_count, fps_counter, last_fps_time, current_fps
+    global bandwidth_counter, last_bandwidth_time, current_bandwidth
+
+    while True:
+        try:
+            # Get frame from queue (non-blocking with timeout)
+            data = frame_queue.get(timeout=0.1)
+
+            # Track bandwidth
+            frame_size = len(data)
+            bandwidth_counter += frame_size
+            current_time = time.time()
+            if current_time - last_bandwidth_time >= 1.0:
+                # Calculate bandwidth in Mbps
+                current_bandwidth = (bandwidth_counter * 8) / (1024 * 1024)
+                bandwidth_counter = 0
+                last_bandwidth_time = current_time
+
+            # Decode binary JPEG buffer
+            np_arr = np.frombuffer(data, dtype=np.uint8)
+            frame_bgr = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
+
+            if frame_bgr is not None:
+                frame_count += 1
+                fps_counter += 1
+
+                # Calculate FPS every second
+                if current_time - last_fps_time >= 1.0:
+                    current_fps = fps_counter
+                    fps_counter = 0
+                    last_fps_time = current_time
+                    # Send telemetry to clients
+                    socketio.emit('telemetry', {
+                        'fps': current_fps,
+                        'bandwidth': current_bandwidth,
+                        'frame_count': frame_count,
+                        'client_count': client_count
+                    })
+
+                # Convert BGR to RGB (required by PyVirtualCam)
+                frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
+
+                # Add telemetry overlay
+                frame_with_info = frame_rgb.copy()
+                cv2.putText(frame_with_info, f"FPS: {current_fps}", (10, 30),
+                            cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+                cv2.putText(frame_with_info, f"Frame: {frame_count}", (10, 70),
+                            cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+                cv2.putText(frame_with_info, f"Clients: {client_count}", (10, 110),
+                            cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+                cv2.putText(frame_with_info, f"Bandwidth: {current_bandwidth:.1f} Mbps", (10, 150),
+                            cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+
+                # Send frame to virtual camera if available
+                if cam is not None:
+                    try:
+                        cam.send(frame_with_info)
+                        cam.sleep_until_next_frame()
+                    except Exception as e:
+                        print(f"Error sending frame to virtual camera: {e}")
+                else:
+                    # Debug mode: print frame info to console
+                    if frame_count % 30 == 0:
+                        print(f"Processed frame {frame_count} (debug mode - no virtual camera)")
+
+            frame_queue.task_done()
+
+        except queue.Empty:
+            # No frames in queue, continue
+            continue
+        except Exception as e:
+            print(f"Error in frame worker: {e}")
+            continue
 
 def init_virtual_camera():
     """Initialize virtual camera with retry mechanism."""
@@ -69,40 +157,37 @@ def handle_disconnect():
 
 @socketio.on('video_frame')
 def handle_video_frame(data):
-    global frame_count
-
-    # Decode binary JPEG buffer directly
-    np_arr = np.frombuffer(data, dtype=np.uint8)
-    frame_bgr = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
-
-    if frame_bgr is not None:
-        frame_count += 1
-
-        # Convert BGR to RGB (required by PyVirtualCam)
-        frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
-
-        # Add frame counter and client count as overlay for testing
-        frame_with_info = frame_rgb.copy()
-        cv2.putText(frame_with_info, f"Frame: {frame_count}", (10, 30),
-                    cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
-        cv2.putText(frame_with_info, f"Clients: {client_count}", (10, 70),
-                    cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
-
-        # Send frame to virtual camera if available
-        if cam is not None:
+    """Queue incoming frame for async processing."""
+    try:
+        # Put frame in queue (non-blocking)
+        if frame_queue.full():
+            # Drop oldest frame if queue is full
             try:
-                cam.send(frame_with_info)
-                cam.sleep_until_next_frame()
-            except Exception as e:
-                print(f"Error sending frame to virtual camera: {e}")
-        else:
-            # Debug mode: print frame info to console
-            if frame_count % 30 == 0:  # Print every 30 frames to avoid spam
-                print(f"Received frame {frame_count} (debug mode - no virtual camera)")
+                frame_queue.get_nowait()
+                frame_queue.task_done()
+            except queue.Empty:
+                pass
+
+        frame_queue.put_nowait(data)
+        # Send acknowledgment for packet loss tracking
+        socketio.emit('frame_ack')
+    except Exception as e:
+        print(f"Error queuing frame: {e}")
+
+@socketio.on('ping')
+def handle_ping(data):
+    """Handle ping request for network quality monitoring."""
+    socketio.emit('ping_response', data)
 
 if __name__ == '__main__':
     print("Starting WebCam Bridge Server on port 5000...")
     print("Server binding to 0.0.0.0 for local network access")
+
+    # Start frame worker thread
+    print("\nStarting frame processing worker...")
+    worker_thread = threading.Thread(target=frame_worker, daemon=True)
+    worker_thread.start()
+    print("Frame worker started")
 
     # Check for OBS Virtual Camera driver
     print("\nChecking for OBS Virtual Camera driver...")

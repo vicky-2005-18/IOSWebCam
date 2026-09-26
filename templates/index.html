@@ -42,6 +42,26 @@
         let canvas = null;
         let ctx = null;
         let isStreaming = false;
+        let lastFrameTime = 0;
+        let frameInterval = 33; // 30 FPS target
+        let fpsCounter = 0;
+        let lastFpsTime = performance.now();
+        let currentFps = 0;
+        let droppedFrames = 0;
+
+        // Network quality monitoring
+        let currentPing = 0;
+        let pingHistory = [];
+        let currentQuality = 0.8; // Default JPEG quality
+        let currentResolution = '720p';
+        let packetLossRate = 0;
+        let acknowledgedFrames = 0;
+        let totalFramesSent = 0;
+
+        // Client-side latency tracking
+        let captureTimestamp = 0;
+        let transmitTimestamp = 0;
+        let endToEndLatency = 0;
         
         socket.on('connect', () => {
             statusEl.textContent = 'Connected';
@@ -51,6 +71,32 @@
         socket.on('disconnect', () => {
             statusEl.textContent = 'Disconnected';
             statusEl.className = 'status disconnected';
+        });
+
+        socket.on('ping_response', (data) => {
+            // Calculate round-trip time
+            const rtt = performance.now() - data.timestamp;
+            pingHistory.push(rtt);
+            if (pingHistory.length > 10) {
+                pingHistory.shift();
+            }
+            currentPing = pingHistory.reduce((a, b) => a + b) / pingHistory.length;
+            updateNetworkStatus();
+        });
+
+        socket.on('frame_ack', () => {
+            acknowledgedFrames++;
+            // Calculate packet loss rate
+            if (totalFramesSent > 0) {
+                packetLossRate = 1 - (acknowledgedFrames / totalFramesSent);
+            }
+            updateNetworkStatus();
+        });
+
+        socket.on('telemetry', (data) => {
+            // Update mobile UI with server telemetry
+            const telemetryInfo = ` | Server FPS: ${data.fps} | BW: ${data.bandwidth.toFixed(1)} Mbps | Ping: ${currentPing.toFixed(0)}ms`;
+            frameCounterEl.textContent = `Frames: ${frameCount} | FPS: ${currentFps} | Dropped: ${droppedFrames}${telemetryInfo}`;
         });
         
         function showError(message) {
@@ -63,8 +109,44 @@
         }
         
         function updateFrameCounter() {
-            frameCounterEl.textContent = `Frames: ${frameCount}`;
+            frameCounterEl.textContent = `Frames: ${frameCount} | FPS: ${currentFps} | Dropped: ${droppedFrames}`;
         }
+
+        function updateNetworkStatus() {
+            // Update quality based on ping
+            if (currentPing < 50) {
+                currentQuality = 0.9;
+            } else if (currentPing < 100) {
+                currentQuality = 0.8;
+            } else if (currentPing < 200) {
+                currentQuality = 0.7;
+            } else {
+                currentQuality = 0.6;
+            }
+
+            // Fallback to 480p on high packet loss
+            if (packetLossRate > 0.1 && currentResolution === '720p') {
+                currentResolution = '480p';
+                canvas.width = 640;
+                canvas.height = 480;
+                console.log('Fallback to 480p due to high packet loss');
+            }
+            // Recover to 720p when network improves
+            else if (packetLossRate < 0.05 && currentResolution === '480p') {
+                currentResolution = '720p';
+                canvas.width = 1280;
+                canvas.height = 720;
+                console.log('Recovering to 720p - network improved');
+            }
+        }
+
+        function measurePing() {
+            if (!isStreaming) return;
+            socket.emit('ping', { timestamp: performance.now() });
+        }
+
+        // Measure ping every 5 seconds
+        setInterval(measurePing, 5000);
         
         async function startCamera() {
             try {
@@ -119,39 +201,63 @@
             if (!isStreaming || !localStream || !canvas || !ctx) {
                 return;
             }
-            
-            // Extract frame at ~30 FPS (33ms intervals)
-            const frameInterval = 33;
-            let lastFrameTime = 0;
-            
+
             function captureFrame(currentTime) {
                 if (!isStreaming) {
                     return;
                 }
-                
+
                 requestAnimationFrame(captureFrame);
-                
-                const elapsed = currentTime - lastFrameTime;
-                if (elapsed < frameInterval) {
+
+                // Calculate delta time for frame rate control
+                const delta = currentTime - lastFrameTime;
+
+                // Calculate FPS every second
+                fpsCounter++;
+                if (currentTime - lastFpsTime >= 1000) {
+                    currentFps = fpsCounter;
+                    fpsCounter = 0;
+                    lastFpsTime = currentTime;
+                    updateFrameCounter();
+                }
+
+                // Skip frame if too soon (throttling)
+                if (delta < frameInterval) {
                     return;
                 }
-                
-                lastFrameTime = currentTime - (elapsed % frameInterval);
-                
+
+                // Skip frame if way too late (burst handling)
+                if (delta > frameInterval * 2) {
+                    droppedFrames++;
+                    lastFrameTime = currentTime;
+                    return;
+                }
+
+                // Jitter compensation: adjust timing to maintain smooth 30 FPS
+                lastFrameTime = currentTime - (delta % frameInterval);
+
+                // Capture timestamp for latency tracking
+                captureTimestamp = performance.now();
+
                 // Draw video frame to canvas
                 ctx.drawImage(videoPreview, 0, 0, canvas.width, canvas.height);
-                
-                // Convert to JPEG blob (quality 0.8 for balance)
+
+                // Convert to JPEG blob with dynamic quality
                 canvas.toBlob((blob) => {
                     if (blob && isStreaming) {
-                        // Transmit binary frame via WebSocket
+                        // Track transmit timestamp
+                        transmitTimestamp = performance.now();
+                        // Calculate capture latency
+                        const captureLatency = transmitTimestamp - captureTimestamp;
+
+                        // Transmit binary frame via WebSocket with timestamp
                         socket.emit('video_frame', blob, { binary: true });
+                        totalFramesSent++;
                         frameCount++;
-                        updateFrameCounter();
                     }
-                }, 'image/jpeg', 0.8);
+                }, 'image/jpeg', currentQuality);
             }
-            
+
             requestAnimationFrame(captureFrame);
         }
         
