@@ -1,0 +1,69 @@
+/* Mobile-friendly styling for iOS WebCam Bridge */
+body {
+    margin: 0;
+    padding: 0;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: #000;
+    color: #fff;
+}
+
+.container {
+    max-width: 100%;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+.status {
+    padding: 10px;
+    border-radius: 5px;
+    margin-bottom: 10px;
+    text-align: center;
+    font-weight: bold;
+}
+
+.status.connected {
+    background: #28a745;
+}
+
+.status.disconnected {
+    background: #dc3545;
+}
+
+.frame-counter {
+    text-align: center;
+    font-size: 14px;
+    color: #aaa;
+    margin-bottom: 10px;
+}
+
+#video-preview {
+    width: 100%;
+    max-width: 1280px;
+    height: auto;
+    background: #222;
+    border-radius: 10px;
+}
+
+#error-message {
+    display: none;
+    background: #dc3545;
+    color: white;
+    padding: 15px;
+    border-radius: 5px;
+    margin-bottom: 10px;
+}
+
+#retry-button {
+    background: #fff;
+    color: #dc3545;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 16px;
+    margin-top: 10px;
+}
+
+#retry-button:hover {
+    background: #f8f9fa;
+}

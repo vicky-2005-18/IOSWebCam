@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>iOS WebCam Bridge</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>
+        #video-preview {
+            width: 100%;
+            max-width: 1280px;
+            height: auto;
+            background: #222;
+            border-radius: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div id="connection-status" class="status disconnected">Disconnected</div>
+        <div class="frame-counter">Frames: 0</div>
+        <div id="error-message">
+            <div id="error-text"></div>
+            <button id="retry-button">Retry</button>
+        </div>
+        <video id="video-preview" autoplay playsinline muted></video>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
+    <script>
+        const socket = io();
+        
+        const statusEl = document.getElementById('connection-status');
+        const frameCounterEl = document.querySelector('.frame-counter');
+        const errorEl = document.getElementById('error-message');
+        const errorTextEl = document.getElementById('error-text');
+        const retryButton = document.getElementById('retry-button');
+        const videoPreview = document.getElementById('video-preview');
+        
+        let frameCount = 0;
+        let localStream = null;
+        let canvas = null;
+        let ctx = null;
+        let isStreaming = false;
+        
+        socket.on('connect', () => {
+            statusEl.textContent = 'Connected';
+            statusEl.className = 'status connected';
+        });
+        
+        socket.on('disconnect', () => {
+            statusEl.textContent = 'Disconnected';
+            statusEl.className = 'status disconnected';
+        });
+        
+        function showError(message) {
+            errorTextEl.textContent = message;
+            errorEl.style.display = 'block';
+        }
+        
+        function hideError() {
+            errorEl.style.display = 'none';
+        }
+        
+        function updateFrameCounter() {
+            frameCounterEl.textContent = `Frames: ${frameCount}`;
+        }
+        
+        async function startCamera() {
+            try {
+                // Request camera permission with 720p resolution, rear camera
+                localStream = await navigator.mediaDevices.getUserMedia({
+                    video: {
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 },
+                        facingMode: 'environment'
+                    }
+                });
+                
+                // Set video source to stream
+                videoPreview.srcObject = localStream;
+                
+                // Wait for video to be ready
+                await new Promise((resolve) => {
+                    videoPreview.onloadedmetadata = () => {
+                        resolve();
+                    };
+                });
+                
+                videoPreview.play();
+                
+                // Create offscreen canvas for frame extraction
+                canvas = document.createElement('canvas');
+                canvas.width = 1280;
+                canvas.height = 720;
+                ctx = canvas.getContext('2d');
+                
+                isStreaming = true;
+                hideError();
+                
+                // Start frame extraction loop
+                extractFrames();
+                
+            } catch (error) {
+                console.error('Camera access error:', error);
+                if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
+                    showError('Camera permission denied. Please allow camera access and retry.');
+                } else if (error.name === 'NotFoundError') {
+                    showError('No camera found on this device.');
+                } else if (error.name === 'NotReadableError') {
+                    showError('Camera is already in use by another application.');
+                } else {
+                    showError(`Camera error: ${error.message}`);
+                }
+            }
+        }
+        
+        function extractFrames() {
+            if (!isStreaming || !localStream || !canvas || !ctx) {
+                return;
+            }
+            
+            // Extract frame at ~30 FPS (33ms intervals)
+            const frameInterval = 33;
+            let lastFrameTime = 0;
+            
+            function captureFrame(currentTime) {
+                if (!isStreaming) {
+                    return;
+                }
+                
+                requestAnimationFrame(captureFrame);
+                
+                const elapsed = currentTime - lastFrameTime;
+                if (elapsed < frameInterval) {
+                    return;
+                }
+                
+                lastFrameTime = currentTime - (elapsed % frameInterval);
+                
+                // Draw video frame to canvas
+                ctx.drawImage(videoPreview, 0, 0, canvas.width, canvas.height);
+                
+                // Convert to JPEG blob (quality 0.8 for balance)
+                canvas.toBlob((blob) => {
+                    if (blob && isStreaming) {
+                        // WebSocket transmission will be added in next task
+                        frameCount++;
+                        updateFrameCounter();
+                    }
+                }, 'image/jpeg', 0.8);
+            }
+            
+            requestAnimationFrame(captureFrame);
+        }
+        
+        // Auto-start camera when page loads
+        window.addEventListener('load', () => {
+            startCamera();
+        });
+        
+        retryButton.addEventListener('click', () => {
+            if (localStream) {
+                // Stop existing stream
+                localStream.getTracks().forEach(track => track.stop());
+            }
+            startCamera();
+        });
+        
+        // Handle page visibility change (pause when hidden to save battery)
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) {
+                isStreaming = false;
+            } else {
+                isStreaming = true;
+                if (localStream && localStream.active) {
+                    extractFrames();
+                }
+            }
+        });
+    </script>
+</body>
+</html>
