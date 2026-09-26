@@ -67,13 +67,13 @@ def frame_worker():
                     current_fps = fps_counter
                     fps_counter = 0
                     last_fps_time = current_time
-                    # Send telemetry to clients
+                    # Send telemetry to all clients
                     socketio.emit('telemetry', {
                         'fps': current_fps,
                         'bandwidth': current_bandwidth,
                         'frame_count': frame_count,
                         'client_count': client_count
-                    })
+                    }, broadcast=True)
 
                 # Convert BGR to RGB (required by PyVirtualCam)
                 frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
@@ -143,20 +143,20 @@ def index():
     return render_template('index.html')
 
 @socketio.on('connect')
-def handle_connect():
+def handle_connect(sid):
     global client_count
     client_count += 1
     print(f"Client connected. Total clients: {client_count}")
     return {'status': 'connected'}
 
 @socketio.on('disconnect')
-def handle_disconnect():
+def handle_disconnect(sid):
     global client_count
     client_count -= 1
     print("Client disconnected")
 
 @socketio.on('video_frame')
-def handle_video_frame(data):
+def handle_video_frame(data, sid):
     """Queue incoming frame for async processing."""
     try:
         # Put frame in queue (non-blocking)
@@ -170,14 +170,14 @@ def handle_video_frame(data):
 
         frame_queue.put_nowait(data)
         # Send acknowledgment for packet loss tracking
-        socketio.emit('frame_ack')
+        socketio.emit('frame_ack', to=sid)
     except Exception as e:
         print(f"Error queuing frame: {e}")
 
 @socketio.on('ping')
-def handle_ping(data):
+def handle_ping(data, sid):
     """Handle ping request for network quality monitoring."""
-    socketio.emit('ping_response', data)
+    socketio.emit('ping_response', data, to=sid)
 
 if __name__ == '__main__':
     print("Starting WebCam Bridge Server on port 5000...")

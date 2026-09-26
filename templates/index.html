@@ -23,6 +23,9 @@
             <div id="error-text"></div>
             <button id="retry-button">Retry</button>
         </div>
+        <div id="info-message" style="display: none; background: #2196F3; color: white; padding: 15px; border-radius: 10px; margin-bottom: 15px; text-align: center;">
+            <strong>Testing Note:</strong> For camera access, use <code>http://127.0.0.1:5000</code> on the host computer. Remote access requires HTTPS.
+        </div>
         <video id="video-preview" autoplay playsinline muted></video>
     </div>
 
@@ -150,6 +153,11 @@
         
         async function startCamera() {
             try {
+                // Check if mediaDevices is available
+                if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                    throw new Error('Camera API not available. This may be due to:');
+                }
+
                 // Request camera permission with 720p resolution, front camera
                 localStream = await navigator.mediaDevices.getUserMedia({
                     video: {
@@ -158,34 +166,36 @@
                         facingMode: 'user'
                     }
                 });
-                
+
                 // Set video source to stream
                 videoPreview.srcObject = localStream;
-                
+
                 // Wait for video to be ready
                 await new Promise((resolve) => {
                     videoPreview.onloadedmetadata = () => {
                         resolve();
                     };
                 });
-                
+
                 videoPreview.play();
-                
+
                 // Create offscreen canvas for frame extraction
                 canvas = document.createElement('canvas');
                 canvas.width = 1280;
                 canvas.height = 720;
                 ctx = canvas.getContext('2d');
-                
+
                 isStreaming = true;
                 hideError();
-                
+
                 // Start frame extraction loop
                 extractFrames();
-                
+
             } catch (error) {
                 console.error('Camera access error:', error);
-                if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
+                if (error.message === 'Camera API not available. This may be due to:') {
+                    showError('Camera API requires HTTPS or localhost. Please use http://127.0.0.1:5000 on the host computer, or enable HTTPS support.');
+                } else if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
                     showError('Camera permission denied. Please allow camera access and retry.');
                 } else if (error.name === 'NotFoundError') {
                     showError('No camera found on this device.');
@@ -263,6 +273,12 @@
         
         // Auto-start camera when page loads
         window.addEventListener('load', () => {
+            // Show info message if accessing via remote IP (not localhost)
+            const hostname = window.location.hostname;
+            const infoMessage = document.getElementById('info-message');
+            if (hostname !== '127.0.0.1' && hostname !== 'localhost') {
+                infoMessage.style.display = 'block';
+            }
             startCamera();
         });
         
