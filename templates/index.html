@@ -68,12 +68,12 @@
         
         async function startCamera() {
             try {
-                // Request camera permission with 720p resolution, rear camera
+                // Request camera permission with 720p resolution, front camera
                 localStream = await navigator.mediaDevices.getUserMedia({
                     video: {
                         width: { ideal: 1280 },
                         height: { ideal: 720 },
-                        facingMode: 'environment'
+                        facingMode: 'user'
                     }
                 });
                 
@@ -144,7 +144,8 @@
                 // Convert to JPEG blob (quality 0.8 for balance)
                 canvas.toBlob((blob) => {
                     if (blob && isStreaming) {
-                        // WebSocket transmission will be added in next task
+                        // Transmit binary frame via WebSocket
+                        socket.emit('video_frame', blob, { binary: true });
                         frameCount++;
                         updateFrameCounter();
                     }
