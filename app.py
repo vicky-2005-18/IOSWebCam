@@ -7,6 +7,8 @@ import atexit
 import threading
 import queue
 import time
+import socket
+import qrcode
 
 app = Flask(__name__)
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
@@ -135,8 +137,47 @@ def check_obs_driver():
         print("[OK] OBS Virtual Camera driver detected")
         return True
     except Exception as e:
-        print(f"[FAIL] OBS Virtual Camera driver not found")
+        print("[FAIL] OBS Virtual Camera driver not found")
         return False
+
+def get_local_ip():
+    """Get local IPv4 address for auto-discovery."""
+    try:
+        # Get hostname and resolve to IP
+        hostname = socket.gethostname()
+        local_ip = socket.gethostbyname(hostname)
+
+        # Verify it's an IPv4 address
+        if local_ip.startswith('127.') or local_ip == '::1':
+            # Fallback to 0.0.0.0 if localhost
+            return '0.0.0.0'
+
+        return local_ip
+    except Exception as e:
+        print(f"[WARN] Could not detect local IP: {e}")
+        return '0.0.0.0'
+
+def display_qr_code(url):
+    """Generate and display QR code for the given URL."""
+    try:
+        qr = qrcode.QRCode(
+            version=1,
+            error_correction=qrcode.constants.ERROR_CORRECT_L,
+            box_size=10,
+            border=4,
+        )
+        qr.add_data(url)
+        qr.make(fit=True)
+        print("\n" + "="*70)
+        print("Scan this QR code with your mobile device:")
+        print("="*70)
+        qr.print_ascii(invert=True)
+        print("="*70)
+        print(f"Or navigate to: {url}")
+        print("="*70 + "\n")
+    except Exception as e:
+        print(f"[WARN] Could not generate QR code: {e}")
+        print(f"Please navigate to: {url}\n")
 
 @app.route('/')
 def index():
@@ -181,7 +222,22 @@ def handle_ping(data, sid):
 
 if __name__ == '__main__':
     print("Starting WebCam Bridge Server on port 5000...")
-    print("Server binding to 0.0.0.0 for local network access")
+
+    # Detect local IP address
+    local_ip = get_local_ip()
+    server_url = f"http://{local_ip}:5000"
+    print(f"\nDetected local IP address: {local_ip}")
+    print(f"Server URL: {server_url}")
+    print("\nTo connect from your mobile device:")
+    print(f"1. Ensure your device is on the same Wi-Fi network")
+    print(f"2. Open Safari and navigate to: {server_url}")
+    print(f"3. Grant camera permission when prompted")
+    print(f"Note: iOS requires HTTPS for camera access. Use ngrok for remote testing.")
+
+    # Display QR code for easy mobile connection
+    display_qr_code(server_url)
+
+    print("\nServer binding to 0.0.0.0 for local network access")
 
     # Start frame worker thread
     print("\nStarting frame processing worker...")

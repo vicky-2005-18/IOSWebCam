@@ -4,3 +4,5 @@ eventlet>=0.33.3
 opencv-python>=4.10.0
 numpy>=1.26.0
 pyvirtualcam>=0.6.0
+qrcode>=7.4.0
+pyinstaller>=6.0.0
