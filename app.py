@@ -33,6 +33,7 @@ def cleanup():
         print("\nClosing virtual camera...")
         cam.close()
         cam = None
+    cv2.destroyAllWindows()
 
 atexit.register(cleanup)
 
@@ -99,9 +100,11 @@ def frame_worker():
                     except Exception as e:
                         print(f"Error sending frame to virtual camera: {e}")
                 else:
-                    # Debug mode: print frame info to console
-                    if frame_count % 30 == 0:
-                        print(f"Processed frame {frame_count} (debug mode - no virtual camera)")
+                    # Debug mode: show OpenCV window
+                    cv2.imshow('iOS WebCam Bridge - Debug Mode', frame_bgr)
+                    if cv2.waitKey(1) & 0xFF == ord('q'):
+                        print("Quit requested from debug window")
+                        break
 
             frame_queue.task_done()
 
@@ -118,11 +121,12 @@ def init_virtual_camera():
     max_retries = 3
     for attempt in range(max_retries):
         try:
-            cam = pyvirtualcam.Camera(width=1280, height=720, fps=30, device="OBS Virtual Camera")
+            # Try without specifying device name (let pyvirtualcam auto-detect)
+            cam = pyvirtualcam.Camera(width=1280, height=720, fps=30)
             print(f"Virtual camera initialized: {cam.device}")
             return True
         except Exception as e:
-            print(f"Attempt {attempt + 1}/{max_retries} failed")
+            print(f"Attempt {attempt + 1}/{max_retries} failed: {e}")
             if attempt < max_retries - 1:
                 import time
                 time.sleep(1)
@@ -131,13 +135,13 @@ def init_virtual_camera():
 def check_obs_driver():
     """Check if OBS Virtual Camera driver is available."""
     try:
-        # Try to initialize virtual camera to detect driver
-        test_cam = pyvirtualcam.Camera(width=1280, height=720, fps=30, device="OBS Virtual Camera")
+        # Try to initialize without specifying device name (let pyvirtualcam auto-detect)
+        test_cam = pyvirtualcam.Camera(width=1280, height=720, fps=30)
         test_cam.close()
         print("[OK] OBS Virtual Camera driver detected")
         return True
     except Exception as e:
-        print("[FAIL] OBS Virtual Camera driver not found")
+        print(f"[FAIL] OBS Virtual Camera driver not found: {e}")
         return False
 
 def get_local_ip():
