@@ -1,7 +1,9 @@
 flask==3.0.0
 flask-socketio==5.3.6
+cryptography>=41.0.0
 opencv-python>=4.10.0
 numpy>=1.26.0
 pyvirtualcam>=0.6.0
 qrcode>=7.4.0
 pyinstaller>=6.0.0
+pyngrok>=7.0.0

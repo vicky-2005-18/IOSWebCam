@@ -9,9 +9,13 @@
         #video-preview {
             width: 100%;
             max-width: 1280px;
+            min-height: 260px;
             height: auto;
-            background: #222;
+            background: #111;
             border-radius: 10px;
+            border: 2px solid #333;
+            display: block;
+            object-fit: cover;
         }
     </style>
 </head>
@@ -23,9 +27,14 @@
             <div id="error-text"></div>
             <button id="retry-button">Retry</button>
         </div>
-        <div id="info-message" style="display: none; background: #2196F3; color: white; padding: 15px; border-radius: 10px; margin-bottom: 15px; text-align: center;">
-            <strong>Testing Note:</strong> For camera access, use <code>http://127.0.0.1:5000</code> on the host computer. Remote access requires HTTPS.
-        </div>
+        <div id="info-message" style="display: none;"></div>
+
+        <!-- Big Start Streaming button for mobile tap permissions -->
+        <button id="start-btn" onclick="startCamera()" style="display: block; width: 100%; padding: 18px; font-size: 18px; font-weight: bold; background: #28a745; color: #fff; border: none; border-radius: 10px; margin-bottom: 15px; cursor: pointer; box-shadow: 0 4px 6px rgba(0,0,0,0.3); -webkit-tap-highlight-color: transparent;">
+            ▶ Start Camera & Stream
+        </button>
+
+        <div id="debug-log" style="font-family: monospace; font-size: 13px; color: #ffeb3b; background: rgba(0,0,0,0.6); padding: 8px; border-radius: 6px; margin-bottom: 10px; display: none;"></div>
 
         <!-- Control Panel -->
         <div id="control-panel" style="display: none; background: rgba(0,0,0,0.7); padding: 15px; border-radius: 10px; margin-bottom: 15px;">
@@ -36,7 +45,14 @@
                 <button id="torch-toggle" style="flex: 1; min-width: 120px; padding: 12px; background: #FF9800; color: white; border: none; border-radius: 8px; font-size: 16px; cursor: pointer; disabled: true;">
                     🔦 Flashlight
                 </button>
-                <select id="resolution-selector" style="flex: 1; min-width: 120px; padding: 12px; background: #2196F3; color: white; border: none; border-radius: 8px; font-size: 16px; cursor: pointer;">
+                <button id="mirror-toggle" style="flex: 1; min-width: 120px; padding: 12px; background: #9C27B0; color: white; border: none; border-radius: 8px; font-size: 16px; cursor: pointer;">
+                    🪞 Flip / Mirror
+                </button>
+                <select id="fps-selector" style="flex: 1; min-width: 100px; padding: 12px; background: #E91E63; color: white; border: none; border-radius: 8px; font-size: 16px; cursor: pointer;">
+                    <option value="30">30 FPS</option>
+                    <option value="60" selected>60 FPS</option>
+                </select>
+                <select id="resolution-selector" style="flex: 1; min-width: 110px; padding: 12px; background: #2196F3; color: white; border: none; border-radius: 8px; font-size: 16px; cursor: pointer;">
                     <option value="480">480p</option>
                     <option value="720" selected>720p</option>
                     <option value="1080">1080p</option>
@@ -50,7 +66,11 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/nosleep.js@0.12.1/dist/NoSleep.min.js"></script>
     <script>
-        const socket = io();
+        const socket = io({
+            transports: ['websocket', 'polling'],
+            reconnectionAttempts: 10,
+            timeout: 10000
+        });
         
         const statusEl = document.getElementById('connection-status');
         const frameCounterEl = document.querySelector('.frame-counter');
@@ -65,7 +85,8 @@
         let ctx = null;
         let isStreaming = false;
         let lastFrameTime = 0;
-        let frameInterval = 33; // 30 FPS target
+        let targetFps = 60; // 60 FPS target
+        let frameInterval = 16.6; // ~60 FPS interval in ms
         let fpsCounter = 0;
         let lastFpsTime = performance.now();
         let currentFps = 0;
@@ -73,8 +94,8 @@
 
         // Network quality monitoring
         let currentPing = 0;
-        let pingHistory = [];
-        let currentQuality = 0.8; // Default JPEG quality
+        pingHistory = [];
+        let currentQuality = 0.70; // Optimized default quality for sub-50ms latency
         let resolutionLabel = '720p';
         let packetLossRate = 0;
         let acknowledgedFrames = 0;
@@ -85,19 +106,33 @@
         let transmitTimestamp = 0;
         let endToEndLatency = 0;
 
-        // Screen lock prevention
-        let noSleep = new NoSleep();
+        let noSleep = null;
+        try {
+            if (typeof NoSleep !== 'undefined') {
+                noSleep = new NoSleep();
+            }
+        } catch (e) {
+            console.warn('NoSleep init skipped:', e);
+        }
         let silentAudio = null;
 
         // Camera controls
         let currentFacingMode = 'user'; // 'user' = front, 'environment' = rear
         let currentResolution = 720; // Default resolution
         let torchEnabled = false;
+        let isMirrored = false;
         let imageCapture = null;
         
         socket.on('connect', () => {
-            statusEl.textContent = 'Connected';
+            console.log('Socket connected successfully');
+            statusEl.textContent = 'Connected to Server';
             statusEl.className = 'status connected';
+        });
+
+        socket.on('connect_error', (err) => {
+            console.error('Socket connect error:', err);
+            statusEl.textContent = 'Connecting...';
+            statusEl.className = 'status disconnected';
         });
         
         socket.on('disconnect', () => {
@@ -106,7 +141,6 @@
         });
 
         socket.on('ping_response', (data) => {
-            // Calculate round-trip time
             const rtt = performance.now() - data.timestamp;
             pingHistory.push(rtt);
             if (pingHistory.length > 10) {
@@ -118,7 +152,6 @@
 
         socket.on('frame_ack', () => {
             acknowledgedFrames++;
-            // Calculate packet loss rate
             if (totalFramesSent > 0) {
                 packetLossRate = 1 - (acknowledgedFrames / totalFramesSent);
             }
@@ -126,8 +159,7 @@
         });
 
         socket.on('telemetry', (data) => {
-            // Update mobile UI with server telemetry
-            const telemetryInfo = ` | Server FPS: ${data.fps} | BW: ${data.bandwidth.toFixed(1)} Mbps | Ping: ${currentPing.toFixed(0)}ms`;
+            const telemetryInfo = ` | Server FPS: ${data.fps} | BW: ${data.bandwidth.toFixed(1)} Mbps`;
             frameCounterEl.textContent = `Frames: ${frameCount} | FPS: ${currentFps} | Dropped: ${droppedFrames}${telemetryInfo}`;
         });
         
@@ -145,22 +177,14 @@
         }
 
         function updateNetworkStatus() {
-            // Update quality based on ping
             if (currentPing < 50) {
-                currentQuality = 0.9;
+                currentQuality = 0.75;
             } else if (currentPing < 100) {
-                currentQuality = 0.8;
+                currentQuality = 0.68;
             } else if (currentPing < 200) {
-                currentQuality = 0.7;
+                currentQuality = 0.58;
             } else {
-                currentQuality = 0.6;
-            }
-
-            // Fallback to 480p on high packet loss (only if user selected 720p or 1080p)
-            if (packetLossRate > 0.1 && currentResolution > 480) {
-                // Note: We don't auto-change resolution in Phase 4 to respect user selection
-                // Quality scaling handles performance instead
-                console.log('High packet loss detected, reducing quality');
+                currentQuality = 0.50;
             }
         }
 
@@ -169,18 +193,18 @@
             socket.emit('ping', { timestamp: performance.now() });
         }
 
-        // Measure ping every 5 seconds
         setInterval(measurePing, 5000);
 
         function playSilentAudio() {
-            // Create silent audio element for iOS screen lock prevention
-            if (!silentAudio) {
-                silentAudio = document.createElement('audio');
-                silentAudio.loop = true;
-                silentAudio.src = 'data:audio/wav;base64,UklGRjIAAABXQVZFZm10IBIAAAABAAEAQB8AAEAfAAABAAgAAABmYWN0BAAAAAAAAABkYXRhAAAAAA==';
-                silentAudio.volume = 0;
-                silentAudio.play().catch(e => console.log('Silent audio play failed:', e));
-            }
+            try {
+                if (!silentAudio) {
+                    silentAudio = document.createElement('audio');
+                    silentAudio.loop = true;
+                    silentAudio.src = 'data:audio/wav;base64,UklGRjIAAABXQVZFZm10IBIAAAABAAEAQB8AAEAfAAABAAgAAABmYWN0BAAAAAAAAABkYXRhAAAAAA==';
+                    silentAudio.volume = 0;
+                    silentAudio.play().catch(e => console.log('Silent audio play failed:', e));
+                }
+            } catch (e) {}
         }
 
         function stopSilentAudio() {
@@ -192,7 +216,7 @@
 
         function stopStreaming() {
             isStreaming = false;
-            noSleep.disable();
+            if (noSleep) noSleep.disable();
             stopSilentAudio();
             if (localStream) {
                 localStream.getTracks().forEach(track => track.stop());
@@ -200,48 +224,82 @@
             }
         }
         
+        function debugLog(msg) {
+            console.log(msg);
+            const d = document.getElementById('debug-log');
+            if (d) {
+                d.style.display = 'block';
+                d.textContent = msg;
+            }
+        }
+
         async function startCamera() {
+            debugLog('Button tapped. Checking mediaDevices...');
+            const startBtn = document.getElementById('start-btn');
+            if (startBtn) {
+                startBtn.textContent = 'Requesting Camera Access...';
+                startBtn.style.background = '#007bff';
+            }
+            hideError();
+
             try {
-                // Check if mediaDevices is available
                 if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-                    throw new Error('Camera API not available. This may be due to:');
+                    throw new Error(
+                        '⚠️ Camera blocked!\n\n' +
+                        'You opened this page over HTTP (local IP), but the camera requires HTTPS.\n\n' +
+                        '✅ Fix: Use the ngrok HTTPS link shown in the terminal on your computer — ' +
+                        'it starts with https://...ngrok-free.app or similar.\n\n' +
+                        'Do NOT use the 192.168.x.x address.'
+                    );
                 }
 
-                // Request camera permission with current resolution and facing mode
+                debugLog('Opening camera prompt...');
+                // Request camera stream with standard iOS fallback
+                let stream = null;
                 const resolutions = {
                     480: { width: 640, height: 480 },
                     720: { width: 1280, height: 720 },
                     1080: { width: 1920, height: 1080 }
                 };
-                const res = resolutions[currentResolution];
+                const res = resolutions[currentResolution] || { width: 1280, height: 720 };
 
-                localStream = await navigator.mediaDevices.getUserMedia({
-                    video: {
-                        width: { ideal: res.width },
-                        height: { ideal: res.height },
-                        facingMode: currentFacingMode
-                    }
-                });
-
-                // Set video source to stream
-                videoPreview.srcObject = localStream;
-
-                // Wait for video to be ready
-                await new Promise((resolve) => {
-                    videoPreview.onloadedmetadata = () => {
-                        resolve();
-                    };
-                });
-
-                videoPreview.play();
-
-                // Initialize ImageCapture for torch control
-                const videoTrack = localStream.getVideoTracks()[0];
-                if ('ImageCapture' in window) {
-                    imageCapture = new ImageCapture(videoTrack);
+                try {
+                    stream = await navigator.mediaDevices.getUserMedia({
+                        video: {
+                            width: { ideal: res.width },
+                            height: { ideal: res.height },
+                            frameRate: { ideal: targetFps, min: 30 },
+                            facingMode: currentFacingMode
+                        },
+                        audio: false
+                    });
+                    debugLog(`Camera stream acquired at ${targetFps} FPS target.`);
+                } catch (firstErr) {
+                    debugLog('Retrying with basic video constraint...');
+                    // Fallback to minimal video constraint for older iOS Safari
+                    stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+                    debugLog('Camera stream acquired with fallback.');
                 }
 
-                // Create offscreen canvas for frame extraction
+                localStream = stream;
+                videoPreview.setAttribute('playsinline', '');
+                videoPreview.setAttribute('webkit-playsinline', '');
+                videoPreview.muted = true;
+                videoPreview.srcObject = localStream;
+
+                try {
+                    await videoPreview.play();
+                } catch (playErr) {
+                    console.warn('Autoplay caught:', playErr);
+                }
+
+                const videoTrack = localStream.getVideoTracks()[0];
+                if ('ImageCapture' in window) {
+                    try {
+                        imageCapture = new ImageCapture(videoTrack);
+                    } catch (e) {}
+                }
+
                 canvas = document.createElement('canvas');
                 canvas.width = res.width;
                 canvas.height = res.height;
@@ -250,36 +308,27 @@
                 isStreaming = true;
                 hideError();
 
-                // Show control panel
+                if (startBtn) startBtn.style.display = 'none';
                 document.getElementById('control-panel').style.display = 'block';
 
-                // Update camera toggle button text
                 updateCameraToggleButton();
-
-                // Update torch button state
                 updateTorchButtonState();
 
-                // Enable screen lock prevention
-                noSleep.enable();
-                // Play silent audio to keep iOS awake
+                if (noSleep) {
+                    try { noSleep.enable(); } catch (e) {}
+                }
                 playSilentAudio();
 
-                // Start frame extraction loop
                 extractFrames();
 
             } catch (error) {
                 console.error('Camera access error:', error);
-                if (error.message === 'Camera API not available. This may be due to:') {
-                    showError('Camera API requires HTTPS or localhost. Please use http://127.0.0.1:5000 on the host computer, or enable HTTPS support.');
-                } else if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
-                    showError('Camera permission denied. Please allow camera access and retry.');
-                } else if (error.name === 'NotFoundError') {
-                    showError('No camera found on this device.');
-                } else if (error.name === 'NotReadableError') {
-                    showError('Camera is already in use by another application.');
-                } else {
-                    showError(`Camera error: ${error.message}`);
+                if (startBtn) {
+                    startBtn.style.display = 'block';
+                    startBtn.textContent = '❌ Tap to Retry Camera';
+                    startBtn.style.background = '#dc3545';
                 }
+                showError(`Camera Error: ${error.name || ''} - ${error.message || error}`);
             }
         }
 
@@ -385,8 +434,14 @@
                 // Capture timestamp for latency tracking
                 captureTimestamp = performance.now();
 
-                // Draw video frame to canvas
+                // Draw video frame to canvas (handle mirroring)
+                ctx.save();
+                if (isMirrored) {
+                    ctx.translate(canvas.width, 0);
+                    ctx.scale(-1, 1);
+                }
                 ctx.drawImage(videoPreview, 0, 0, canvas.width, canvas.height);
+                ctx.restore();
 
                 // Convert to JPEG blob with dynamic quality
                 canvas.toBlob((blob) => {
@@ -397,7 +452,7 @@
                         const captureLatency = transmitTimestamp - captureTimestamp;
 
                         // Transmit binary frame via WebSocket with timestamp
-                        socket.emit('video_frame', blob, { binary: true });
+                        socket.emit('video_frame', blob);
                         totalFramesSent++;
                         frameCount++;
                     }
@@ -407,17 +462,26 @@
             requestAnimationFrame(captureFrame);
         }
         
-        // Auto-start camera when page loads
+        // Initialize on page load
         window.addEventListener('load', () => {
-            // Show info message if accessing via remote IP (not localhost)
-            const hostname = window.location.hostname;
+            const isSecure = window.isSecureContext || window.location.protocol === 'https:' || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
             const infoMessage = document.getElementById('info-message');
-            if (hostname !== '127.0.0.1' && hostname !== 'localhost') {
+            if (!isSecure) {
                 infoMessage.style.display = 'block';
             }
-            startCamera();
         });
         
+        const startBtn = document.getElementById('start-btn');
+        if (startBtn) {
+            startBtn.addEventListener('click', () => {
+                startCamera();
+            });
+            startBtn.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                startCamera();
+            }, { passive: false });
+        }
+
         retryButton.addEventListener('click', () => {
             if (localStream) {
                 // Stop existing stream
@@ -431,6 +495,32 @@
 
         // Torch toggle button
         document.getElementById('torch-toggle').addEventListener('click', toggleTorch);
+
+        // Mirror toggle button
+        const mirrorBtn = document.getElementById('mirror-toggle');
+        if (mirrorBtn) {
+            mirrorBtn.addEventListener('click', () => {
+                isMirrored = !isMirrored;
+                mirrorBtn.style.background = isMirrored ? '#E91E63' : '#9C27B0';
+                mirrorBtn.textContent = isMirrored ? '🪞 Mirrored ON' : '🪞 Flip / Mirror';
+                // Also mirror phone preview for consistency
+                videoPreview.style.transform = isMirrored ? 'scaleX(-1)' : 'none';
+            });
+        }
+
+        // FPS selector (30 FPS / 60 FPS)
+        const fpsSelector = document.getElementById('fps-selector');
+        if (fpsSelector) {
+            fpsSelector.addEventListener('change', async (e) => {
+                targetFps = parseInt(e.target.value);
+                frameInterval = 1000 / targetFps;
+                if (localStream) {
+                    localStream.getTracks().forEach(track => track.stop());
+                    localStream = null;
+                }
+                await startCamera();
+            });
+        }
 
         // Resolution selector
         document.getElementById('resolution-selector').addEventListener('change', async (e) => {

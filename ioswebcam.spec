@@ -5,7 +5,9 @@ block_cipher = None
 a = Analysis(
     ['app.py'],
     pathex=[],
-    binaries=[],
+    binaries=[
+        ('cloudflared.exe', '.'),  # Bundle cloudflared for automatic tunnel
+    ],
     datas=[
         ('templates', 'templates'),
         ('static', 'static'),
@@ -30,6 +32,14 @@ a = Analysis(
         'markupsafe',
         'blinker',
         'engineio.async_drivers.threading',
+        'cryptography',
+        'cryptography.hazmat.primitives',
+        'cryptography.hazmat.backends',
+        'cryptography.x509',
+        'pyngrok',
+        'pyngrok.ngrok',
+        'pyngrok.conf',
+        'yaml',
     ],
     hookspath=[],
     hooksconfig={},
