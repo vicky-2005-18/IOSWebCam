@@ -66,11 +66,22 @@ The server will start on `http://0.0.0.0:5000` and display the local IPv4 addres
 
 ## Documentation
 
+- [Distribution Guide](DISTRIBUTION.md) - Download and install the standalone executable
 - [User Guide](USER_GUIDE.md) - Installation and usage instructions
 - [Troubleshooting Guide](TROUBLESHOOTING.md) - Common issues and solutions
 - [Engineering Specification](iOS_WebCam_Bridge_Engineering_Doc.docx) - Complete technical specification
 - [Project Planning](.planning/) - GSD workflow artifacts (PROJECT.md, REQUIREMENTS.md, ROADMAP.md)
 - [Research](.planning/research/) - Technical research (STACK.md, FEATURES.md, ARCHITECTURE.md, PITFALLS.md)
+
+## Quick Start (Executable)
+
+1. Download `ioswebcam.exe` from the [GitHub Releases](https://github.com/vicky-2005-18/IOSWebCam/releases) page
+2. Install [OBS Studio](https://obsproject.com/) and enable the Virtual Camera
+3. Double-click `ioswebcam.exe` to run
+4. Open Safari on your iOS device and navigate to the displayed URL
+5. Select "OBS Virtual Camera" in your video conferencing application
+
+See [DISTRIBUTION.md](DISTRIBUTION.md) for detailed instructions.
 
 ## License
 
