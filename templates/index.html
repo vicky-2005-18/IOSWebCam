@@ -26,10 +26,29 @@
         <div id="info-message" style="display: none; background: #2196F3; color: white; padding: 15px; border-radius: 10px; margin-bottom: 15px; text-align: center;">
             <strong>Testing Note:</strong> For camera access, use <code>http://127.0.0.1:5000</code> on the host computer. Remote access requires HTTPS.
         </div>
+
+        <!-- Control Panel -->
+        <div id="control-panel" style="display: none; background: rgba(0,0,0,0.7); padding: 15px; border-radius: 10px; margin-bottom: 15px;">
+            <div style="display: flex; gap: 10px; flex-wrap: wrap; justify-content: center;">
+                <button id="camera-toggle" style="flex: 1; min-width: 120px; padding: 12px; background: #4CAF50; color: white; border: none; border-radius: 8px; font-size: 16px; cursor: pointer;">
+                    📷 Switch Camera
+                </button>
+                <button id="torch-toggle" style="flex: 1; min-width: 120px; padding: 12px; background: #FF9800; color: white; border: none; border-radius: 8px; font-size: 16px; cursor: pointer; disabled: true;">
+                    🔦 Flashlight
+                </button>
+                <select id="resolution-selector" style="flex: 1; min-width: 120px; padding: 12px; background: #2196F3; color: white; border: none; border-radius: 8px; font-size: 16px; cursor: pointer;">
+                    <option value="480">480p</option>
+                    <option value="720" selected>720p</option>
+                    <option value="1080">1080p</option>
+                </select>
+            </div>
+        </div>
+
         <video id="video-preview" autoplay playsinline muted></video>
     </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/nosleep.js@0.12.1/dist/NoSleep.min.js"></script>
     <script>
         const socket = io();
         
@@ -56,7 +75,7 @@
         let currentPing = 0;
         let pingHistory = [];
         let currentQuality = 0.8; // Default JPEG quality
-        let currentResolution = '720p';
+        let resolutionLabel = '720p';
         let packetLossRate = 0;
         let acknowledgedFrames = 0;
         let totalFramesSent = 0;
@@ -65,6 +84,16 @@
         let captureTimestamp = 0;
         let transmitTimestamp = 0;
         let endToEndLatency = 0;
+
+        // Screen lock prevention
+        let noSleep = new NoSleep();
+        let silentAudio = null;
+
+        // Camera controls
+        let currentFacingMode = 'user'; // 'user' = front, 'environment' = rear
+        let currentResolution = 720; // Default resolution
+        let torchEnabled = false;
+        let imageCapture = null;
         
         socket.on('connect', () => {
             statusEl.textContent = 'Connected';
@@ -127,19 +156,11 @@
                 currentQuality = 0.6;
             }
 
-            // Fallback to 480p on high packet loss
-            if (packetLossRate > 0.1 && currentResolution === '720p') {
-                currentResolution = '480p';
-                canvas.width = 640;
-                canvas.height = 480;
-                console.log('Fallback to 480p due to high packet loss');
-            }
-            // Recover to 720p when network improves
-            else if (packetLossRate < 0.05 && currentResolution === '480p') {
-                currentResolution = '720p';
-                canvas.width = 1280;
-                canvas.height = 720;
-                console.log('Recovering to 720p - network improved');
+            // Fallback to 480p on high packet loss (only if user selected 720p or 1080p)
+            if (packetLossRate > 0.1 && currentResolution > 480) {
+                // Note: We don't auto-change resolution in Phase 4 to respect user selection
+                // Quality scaling handles performance instead
+                console.log('High packet loss detected, reducing quality');
             }
         }
 
@@ -150,6 +171,34 @@
 
         // Measure ping every 5 seconds
         setInterval(measurePing, 5000);
+
+        function playSilentAudio() {
+            // Create silent audio element for iOS screen lock prevention
+            if (!silentAudio) {
+                silentAudio = document.createElement('audio');
+                silentAudio.loop = true;
+                silentAudio.src = 'data:audio/wav;base64,UklGRjIAAABXQVZFZm10IBIAAAABAAEAQB8AAEAfAAABAAgAAABmYWN0BAAAAAAAAABkYXRhAAAAAA==';
+                silentAudio.volume = 0;
+                silentAudio.play().catch(e => console.log('Silent audio play failed:', e));
+            }
+        }
+
+        function stopSilentAudio() {
+            if (silentAudio) {
+                silentAudio.pause();
+                silentAudio = null;
+            }
+        }
+
+        function stopStreaming() {
+            isStreaming = false;
+            noSleep.disable();
+            stopSilentAudio();
+            if (localStream) {
+                localStream.getTracks().forEach(track => track.stop());
+                localStream = null;
+            }
+        }
         
         async function startCamera() {
             try {
@@ -158,12 +207,19 @@
                     throw new Error('Camera API not available. This may be due to:');
                 }
 
-                // Request camera permission with 720p resolution, front camera
+                // Request camera permission with current resolution and facing mode
+                const resolutions = {
+                    480: { width: 640, height: 480 },
+                    720: { width: 1280, height: 720 },
+                    1080: { width: 1920, height: 1080 }
+                };
+                const res = resolutions[currentResolution];
+
                 localStream = await navigator.mediaDevices.getUserMedia({
                     video: {
-                        width: { ideal: 1280 },
-                        height: { ideal: 720 },
-                        facingMode: 'user'
+                        width: { ideal: res.width },
+                        height: { ideal: res.height },
+                        facingMode: currentFacingMode
                     }
                 });
 
@@ -179,14 +235,34 @@
 
                 videoPreview.play();
 
+                // Initialize ImageCapture for torch control
+                const videoTrack = localStream.getVideoTracks()[0];
+                if ('ImageCapture' in window) {
+                    imageCapture = new ImageCapture(videoTrack);
+                }
+
                 // Create offscreen canvas for frame extraction
                 canvas = document.createElement('canvas');
-                canvas.width = 1280;
-                canvas.height = 720;
+                canvas.width = res.width;
+                canvas.height = res.height;
                 ctx = canvas.getContext('2d');
 
                 isStreaming = true;
                 hideError();
+
+                // Show control panel
+                document.getElementById('control-panel').style.display = 'block';
+
+                // Update camera toggle button text
+                updateCameraToggleButton();
+
+                // Update torch button state
+                updateTorchButtonState();
+
+                // Enable screen lock prevention
+                noSleep.enable();
+                // Play silent audio to keep iOS awake
+                playSilentAudio();
 
                 // Start frame extraction loop
                 extractFrames();
@@ -204,6 +280,66 @@
                 } else {
                     showError(`Camera error: ${error.message}`);
                 }
+            }
+        }
+
+        async function switchCamera() {
+            // Stop current stream
+            if (localStream) {
+                localStream.getTracks().forEach(track => track.stop());
+                localStream = null;
+            }
+
+            // Toggle facing mode
+            currentFacingMode = currentFacingMode === 'user' ? 'environment' : 'user';
+
+            // Restart camera with new facing mode
+            await startCamera();
+        }
+
+        function updateCameraToggleButton() {
+            const button = document.getElementById('camera-toggle');
+            button.textContent = currentFacingMode === 'user' ? '📷 Switch to Rear' : '📷 Switch to Front';
+        }
+
+        function updateTorchButtonState() {
+            const button = document.getElementById('torch-toggle');
+            // Torch only works on rear camera
+            button.disabled = currentFacingMode !== 'environment';
+            button.textContent = torchEnabled ? '🔦 Flashlight ON' : '🔦 Flashlight OFF';
+            button.style.background = torchEnabled ? '#FF5722' : '#FF9800';
+        }
+
+        async function toggleTorch() {
+            if (!imageCapture) {
+                showError('Torch not supported on this device');
+                return;
+            }
+
+            try {
+                torchEnabled = !torchEnabled;
+
+                // Try WebKit ImageCapture API first (iOS)
+                if (imageCapture.applyConstraints) {
+                    await imageCapture.applyConstraints({
+                        advanced: [{ torch: torchEnabled }]
+                    });
+                }
+                // Fallback to direct constraint
+                else if (localStream.getVideoTracks()[0].applyConstraints) {
+                    await localStream.getVideoTracks()[0].applyConstraints({
+                        advanced: [{ torch: torchEnabled }]
+                    });
+                } else {
+                    throw new Error('Torch API not supported');
+                }
+
+                updateTorchButtonState();
+            } catch (error) {
+                console.error('Torch toggle error:', error);
+                torchEnabled = !torchEnabled; // Revert
+                showError('Torch not supported on this device');
+                updateTorchButtonState();
             }
         }
         
@@ -289,15 +425,36 @@
             }
             startCamera();
         });
+
+        // Camera toggle button
+        document.getElementById('camera-toggle').addEventListener('click', switchCamera);
+
+        // Torch toggle button
+        document.getElementById('torch-toggle').addEventListener('click', toggleTorch);
+
+        // Resolution selector
+        document.getElementById('resolution-selector').addEventListener('change', async (e) => {
+            currentResolution = parseInt(e.target.value);
+
+            // Stop current stream
+            if (localStream) {
+                localStream.getTracks().forEach(track => track.stop());
+                localStream = null;
+            }
+
+            // Restart camera with new resolution
+            await startCamera();
+        });
         
         // Handle page visibility change (pause when hidden to save battery)
         document.addEventListener('visibilitychange', () => {
             if (document.hidden) {
-                isStreaming = false;
+                noSleep.disable();
+                stopSilentAudio();
             } else {
-                isStreaming = true;
-                if (localStream && localStream.active) {
-                    extractFrames();
+                if (isStreaming) {
+                    noSleep.enable();
+                    playSilentAudio();
                 }
             }
         });
