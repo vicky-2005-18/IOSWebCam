@@ -176,8 +176,12 @@ def display_qr_code(url):
         print(f"Or navigate to: {url}")
         print("="*70 + "\n")
     except Exception as e:
-        print(f"[WARN] Could not generate QR code: {e}")
-        print(f"Please navigate to: {url}\n")
+        # QR code generation failed (likely console encoding issue)
+        print("\n" + "="*70)
+        print("QR Code Display")
+        print("="*70)
+        print(f"Navigate to: {url}")
+        print("="*70 + "\n")
 
 @app.route('/')
 def index():
