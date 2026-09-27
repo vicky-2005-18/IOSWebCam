@@ -1,92 +1,163 @@
-# iOS WebCam Bridge
+# 📱 iOS WebCam Bridge
 
-A high-performance, low-latency streaming utility that repurposes an iOS device (iPhone/iPad) into a full-featured virtual USB/system webcam for Windows desktop operating systems.
+> Turn your iPhone or Android into a wireless webcam for Windows — no app install needed.
 
-## Overview
+[![Python](https://img.shields.io/badge/Python-3.9%2B-blue?logo=python)](https://python.org)
+[![Flask](https://img.shields.io/badge/Flask-SocketIO-green?logo=flask)](https://flask-socketio.readthedocs.io)
+[![Platform](https://img.shields.io/badge/Platform-Windows-blue?logo=windows)](https://github.com/vicky-2005-18/IOSWebCam)
+[![License](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
 
-This project leverages modern HTML5 web APIs on the client side and an asynchronous Python receiving pipeline on the host PC to eliminate the need for native iOS app compilation, Apple Developer Account provisioning, or App Store distribution.
+---
 
-## Core Value
+## ✨ What It Does
 
-Sub-100ms motion-to-photon latency at 720p @ 30 FPS with zero iOS app installation required.
+Uses your phone's browser as a wireless camera and streams it to your PC as a **virtual webcam** — instantly available in Zoom, Teams, Meet, OBS, and any other app.
 
-## Architecture
+- **Zero app install** on your phone — just open a link in Safari/Chrome
+- **Works on any phone** — iPhone, Android, any browser
+- **Works from anywhere** — auto HTTPS tunnel, no same-WiFi required
+- **Virtual camera output** — appears as a real webcam in all apps
 
-The system follows a three-layer architecture:
-- **Client Layer:** Mobile web frontend using HTML5 MediaDevices API
-- **Transport Layer:** WebSocket protocol for low-latency binary transmission
-- **Server Layer:** Python engine with Flask-SocketIO, OpenCV, and PyVirtualCam integration
+---
 
-## Technology Stack
+## 🚀 Quick Start
 
-- **Server:** Python 3.10+, Flask-SocketIO, Eventlet, OpenCV, NumPy
-- **Virtual Camera:** PyVirtualCam with OBS Virtual Camera Driver
-- **Client:** HTML5, CSS3, JavaScript (no framework dependencies)
-- **Transport:** WebSocket binary transmission (not Base64)
-
-## Project Status
-
-**Current Phase:** ✅ All 5 Phases Complete
-
-The project has been fully implemented:
-1. ✅ Project initialization and planning complete
-2. ✅ Phase 1: Proof of Concept & WebSocket Pipeline
-3. ✅ Phase 2: Virtual Camera Driver Integration
-4. ✅ Phase 3: Performance & Latency Optimization
-5. ✅ Phase 4: Mobile UI Controls & Utility Features
-6. ✅ Phase 5: Packaging & Single-Executable Build
-
-## Development
-
-### Prerequisites
-
-- Windows 10/11 (64-bit)
-- Python 3.9+
-- OBS Virtual Camera Driver
-- iOS 14.0+ device with Safari
-
-### Setup
+### Option 1 — Run directly (easiest)
 
 ```bash
-# Create virtual environment
+# Clone the repo
+git clone https://github.com/vicky-2005-18/IOSWebCam.git
+cd IOSWebCam
+
+# Create virtual environment & install
 python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+venv\Scripts\pip install -r requirements.txt
 
-# Install dependencies
-pip install -r requirements.txt
+# Start!
+run.bat        # Double-click this, OR:
+# venv\Scripts\python.exe app.py
 ```
 
-### Running the Application
+**That's it.** The terminal will show a **QR code** — scan it with your phone.
 
-```bash
-python app.py
+### Option 2 — Download EXE (no Python needed)
+
+1. Download `ioswebcam.exe` from [Releases](https://github.com/vicky-2005-18/IOSWebCam/releases)
+2. Double-click to run
+3. Scan the QR code shown in terminal
+
+---
+
+## 📡 How Connection Works (Auto)
+
+The server automatically finds the best way to connect your phone:
+
+```
+1. 🌐 Cloudflare Tunnel  →  https://xxx.trycloudflare.com   (any phone, any network)
+2. 🔗 ngrok Tunnel       →  https://xxx.ngrok-free.app      (if ngrok running)
+3. 📶 Local WiFi HTTPS   →  https://192.168.x.x:5000        (same network only)
 ```
 
-The server will start on `http://0.0.0.0:5000` and display the local IPv4 address for mobile device connection.
+No manual setup needed — just run and scan the QR code.
 
-## Documentation
+---
 
-- [Distribution Guide](DISTRIBUTION.md) - Download and install the standalone executable
-- [User Guide](USER_GUIDE.md) - Installation and usage instructions
-- [Troubleshooting Guide](TROUBLESHOOTING.md) - Common issues and solutions
-- [Engineering Specification](iOS_WebCam_Bridge_Engineering_Doc.docx) - Complete technical specification
-- [Project Planning](.planning/) - GSD workflow artifacts (PROJECT.md, REQUIREMENTS.md, ROADMAP.md)
-- [Research](.planning/research/) - Technical research (STACK.md, FEATURES.md, ARCHITECTURE.md, PITFALLS.md)
+## 📱 Connecting Your Phone
 
-## Quick Start (Executable)
+1. Scan the **QR code** shown in terminal (or open the URL)
+2. Tap **"Visit Site"** on any warning page
+3. Tap **"Allow"** for camera permission
+4. Tap **▶ Start Camera & Stream**
+5. ✅ Your phone camera is now a webcam on your PC!
 
-1. Download `ioswebcam.exe` from the [GitHub Releases](https://github.com/vicky-2005-18/IOSWebCam/releases) page
-2. Install [OBS Studio](https://obsproject.com/) and enable the Virtual Camera
-3. Double-click `ioswebcam.exe` to run
-4. Open Safari on your iOS device and navigate to the displayed URL
-5. Select "OBS Virtual Camera" in your video conferencing application
+---
 
-See [DISTRIBUTION.md](DISTRIBUTION.md) for detailed instructions.
+## 🎮 Phone Controls
 
-## License
+| Button | Action |
+|---|---|
+| 📷 Switch Camera | Toggle front/back camera |
+| 🪞 Flip / Mirror | Mirror the image |
+| 🔦 Flashlight | Toggle torch (rear camera) |
+| 30 / 60 FPS | Change frame rate |
+| 480p / 720p / 1080p | Change resolution |
 
-[License to be determined]
+---
 
-## Contributing
+## 🖥️ Architecture
 
-This is a personal project currently in development.
+```
+📱 Phone (Browser)                    💻 PC (Windows)
+┌─────────────────┐                  ┌──────────────────────────┐
+│  HTML5 Camera   │  WebSocket JPEG  │  Flask-SocketIO Server   │
+│  MediaDevices   │ ───────────────► │  OpenCV frame processor  │
+│  getUserMedia() │                  │  PyVirtualCam output     │
+└─────────────────┘                  └────────────┬─────────────┘
+                                                  │
+                                     ┌────────────▼─────────────┐
+                                     │   Virtual Webcam Driver   │
+                                     │  (OBS / Unity Capture)   │
+                                     └──────────────────────────┘
+```
+
+---
+
+## 🛠️ Tech Stack
+
+| Layer | Technology |
+|---|---|
+| Server | Python 3.9+, Flask, Flask-SocketIO |
+| Video Processing | OpenCV, NumPy |
+| Virtual Camera | PyVirtualCam (OBS / Unity Capture) |
+| Tunnel | Cloudflare cloudflared, pyngrok |
+| Client | HTML5, CSS3, Vanilla JavaScript |
+| Transport | WebSocket binary (JPEG frames) |
+| Packaging | PyInstaller (single EXE) |
+
+---
+
+## ⚙️ Requirements
+
+- **OS:** Windows 10/11 (64-bit)
+- **Python:** 3.9+ (only for source run)
+- **Virtual Camera Driver:** [OBS Virtual Camera](https://obsproject.com) **or** [Unity Capture](https://github.com/schellingb/UnityCapture)
+- **Phone:** Any modern browser (Safari on iOS, Chrome on Android)
+
+---
+
+## 📁 Project Structure
+
+```
+IOSWebCam/
+├── app.py              # Main server (Flask + SocketIO + tunnel auto-start)
+├── run.bat             # One-click Windows launcher
+├── cloudflared.exe     # Cloudflare tunnel binary (Git LFS)
+├── requirements.txt    # Python dependencies
+├── ioswebcam.spec      # PyInstaller build config
+├── templates/
+│   └── index.html      # Phone web interface
+├── static/
+│   └── css/style.css   # Styles
+└── dist/
+    └── ioswebcam.exe   # Compiled standalone executable
+```
+
+---
+
+## 📝 Documentation
+
+- [User Guide](USER_GUIDE.md) — Full setup and usage instructions
+- [Troubleshooting](TROUBLESHOOTING.md) — Common issues & fixes
+- [Distribution Guide](DISTRIBUTION.md) — EXE packaging details
+
+---
+
+## 🤝 Contributing
+
+Pull requests welcome! Feel free to open issues for bugs or feature requests.
+
+---
+
+## 📄 License
+
+MIT License — free to use, modify and distribute.
