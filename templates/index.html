@@ -243,13 +243,23 @@
             hideError();
 
             try {
+                // Check for secure context first
+                if (!window.isSecureContext) {
+                    throw new Error(
+                        '⚠️ Camera access requires a secure connection!\n\n' +
+                        'You opened this page over HTTP, but iOS requires HTTPS for camera access.\n\n' +
+                        '✅ Fix: Use the HTTPS link shown in the terminal:\n' +
+                        '  - It should start with https:// (not http://)\n' +
+                        '  - On first visit, tap "Show Details" → "visit this website"\n' +
+                        '  - For iOS: Follow the certificate trust steps shown in terminal'
+                    );
+                }
+
                 if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
                     throw new Error(
-                        '⚠️ Camera blocked!\n\n' +
-                        'You opened this page over HTTP (local IP), but the camera requires HTTPS.\n\n' +
-                        '✅ Fix: Use the ngrok HTTPS link shown in the terminal on your computer — ' +
-                        'it starts with https://...ngrok-free.app or similar.\n\n' +
-                        'Do NOT use the 192.168.x.x address.'
+                        '⚠️ Camera API not available!\n\n' +
+                        'Your browser does not support camera access.\n\n' +
+                        '✅ Fix: Use a modern browser (Safari on iOS, Chrome/Firefox on desktop)'
                     );
                 }
 
@@ -323,6 +333,22 @@
 
             } catch (error) {
                 console.error('Camera access error:', error);
+                
+                // Update status banner with specific error
+                if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
+                    statusEl.textContent = 'Camera permission denied. Please allow camera access and reload.';
+                    statusEl.className = 'status error';
+                } else if (error.name === 'NotFoundError') {
+                    statusEl.textContent = 'No camera found on this device.';
+                    statusEl.className = 'status error';
+                } else if (error.name === 'NotReadableError') {
+                    statusEl.textContent = 'Camera is already in use by another application.';
+                    statusEl.className = 'status error';
+                } else {
+                    statusEl.textContent = `Camera error: ${error.message || error}`;
+                    statusEl.className = 'status error';
+                }
+                
                 if (startBtn) {
                     startBtn.style.display = 'block';
                     startBtn.textContent = '❌ Tap to Retry Camera';

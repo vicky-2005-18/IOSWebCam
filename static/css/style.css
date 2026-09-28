@@ -29,6 +29,11 @@ body {
     background: #dc3545;
 }
 
+.status.error {
+    background: #ffc107;
+    color: #000;
+}
+
 .frame-counter {
     text-align: center;
     font-size: 14px;
