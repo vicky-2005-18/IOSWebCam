@@ -2,12 +2,12 @@
 
 ## Overview
 
-iOS WebCam Bridge is a Windows application that turns your iPhone or iPad into a virtual webcam for video conferencing applications like Zoom, Microsoft Teams, Google Meet, and OBS Studio. No native iOS app installation required - just use Safari!
+iOS WebCam Bridge is a Windows application that turns your iPhone or iPad into a virtual webcam for video conferencing applications like Zoom, Microsoft Teams, Google Meet, and others. No native iOS app installation required - just use Safari!
 
 ## System Requirements
 
 - **Operating System:** Windows 10 or Windows 11 (64-bit)
-- **OBS Virtual Camera:** Required for virtual camera functionality
+- **Unity Capture:** Required for virtual camera functionality
 - **iOS Device:** iPhone or iPad running iOS 14+ with Safari
 - **Network:** Local Wi-Fi network (5 GHz recommended for best performance)
 - **Browser:** Safari on iOS (for camera access)
@@ -19,18 +19,16 @@ iOS WebCam Bridge is a Windows application that turns your iPhone or iPad into a
 1. Download `ioswebcam.exe` from the project repository
 2. Place the executable in a folder of your choice (e.g., `C:\Program Files\iOSWebCam`)
 
-### Step 2: Install OBS Virtual Camera Driver
+### Step 2: Install Unity Capture Driver
 
-The OBS Virtual Camera driver is required to expose the video stream as a system camera device.
+The Unity Capture driver is required to expose the video stream as a system camera device.
 
-1. Download OBS Studio from: https://obsproject.com/
-2. Install OBS Studio (free, open-source)
-3. Open OBS Studio
-4. Go to **Tools** → **Virtual Camera**
-5. Click **Start** to enable the Virtual Camera
-6. Verify "OBS Virtual Camera" appears in Windows Device Manager under "Camera"
+1. Download Unity Capture from: https://github.com/schellingb/UnityCapture/releases
+2. Download and run the UnityCaptureSetup.exe installer
+3. Complete the installation wizard
+4. Verify "Unity Video Capture" appears in Windows Device Manager under "Camera"
 
-**Note:** You only need OBS Studio for the Virtual Camera driver. You don't need to use OBS Studio itself for this application.
+**Note:** Unity Capture is a lightweight DirectShow virtual camera driver with no GUI app. The driver is active as soon as it's installed - no additional "starting" step needed.
 
 ## Quick Start
 
@@ -63,9 +61,9 @@ The OBS Virtual Camera driver is required to expose the video stream as a system
 
 ### 4. Use in Video Conferencing
 
-1. Open your video conferencing app (Zoom, Teams, Meet, OBS Studio, etc.)
+1. Open your video conferencing app (Zoom, Teams, Meet, etc.)
 2. Go to camera settings
-3. Select **"OBS Virtual Camera"** as your video input
+3. Select **"Unity Video Capture"** as your video input
 4. Your iOS device's camera feed will appear!
 
 ## Features
@@ -136,9 +134,9 @@ iOS Safari blocks camera access on HTTP URLs for security. To use the applicatio
 - Use ngrok for HTTPS tunneling (see above)
 - Or test on the host computer using `http://127.0.0.1:5000`
 
-**"OBS Virtual Camera driver not found" error**
-- Install OBS Studio from https://obsproject.com/
-- Open OBS Studio → Tools → Virtual Camera → Start
+**"Unity Video Capture driver not found" error**
+- Install Unity Capture from https://github.com/schellingb/UnityCapture/releases
+- Run UnityCaptureSetup.exe installer
 - Verify driver appears in Windows Device Manager
 
 **Camera permission denied**
@@ -147,8 +145,7 @@ iOS Safari blocks camera access on HTTP URLs for security. To use the applicatio
 - Restart Safari and try again
 
 **Video not appearing in Zoom/Teams**
-- Ensure OBS Virtual Camera is enabled in OBS Studio
-- Verify "OBS Virtual Camera" appears in Windows Device Manager
+- Verify "Unity Video Capture" appears in Windows Device Manager
 - Restart the video conferencing application
 - Check camera settings in the application
 

@@ -40,42 +40,36 @@
 2. Restart Safari
 3. Restart your iOS device
 
-## OBS Virtual Camera Issues
+## Unity Capture Issues
 
-### "OBS Virtual Camera driver not found"
+### "Unity Video Capture driver not found"
 
-**Problem:** OBS Virtual Camera driver is not installed or not enabled.
+**Problem:** Unity Capture driver is not installed.
 
 **Solutions:**
-1. Download OBS Studio from https://obsproject.com/
-2. Install OBS Studio
-3. Open OBS Studio
-4. Go to Tools → Virtual Camera
-5. Click "Start" to enable the Virtual Camera
-6. Verify "OBS Virtual Camera" appears in Windows Device Manager
+1. Download Unity Capture from: https://github.com/schellingb/UnityCapture/releases
+2. Download and run the UnityCaptureSetup.exe installer
+3. Complete the installation wizard
+4. Verify "Unity Video Capture" appears in Windows Device Manager
 
 ### Virtual camera not appearing in Zoom/Teams/Meet
 
-**Problem:** OBS Virtual Camera is not listed as a camera option.
+**Problem:** Unity Video Capture is not listed as a camera option.
 
 **Solutions:**
-1. Ensure OBS Virtual Camera is enabled in OBS Studio
-2. Restart OBS Studio
-3. Restart the video conferencing application
-4. Check Windows Device Manager → Camera
-5. Update OBS Studio to the latest version
-6. Reinstall OBS Studio with Virtual Camera component
+1. Restart the video conferencing application
+2. Check Windows Device Manager → Camera
+3. Reinstall Unity Capture driver
 
 ### Virtual camera shows black screen
 
-**Problem:** OBS Virtual Camera is selected but shows no video.
+**Problem:** Unity Video Capture is selected but shows no video.
 
 **Solutions:**
 1. Ensure the iOS WebCam Bridge server is running
 2. Ensure your iOS device is connected and streaming
 3. Restart the iOS WebCam Bridge server
-4. Restart OBS Studio (Tools → Virtual Camera → Stop → Start)
-5. Check server logs for errors
+4. Check server logs for errors
 
 ## Network Issues
 
@@ -305,7 +299,7 @@ If you still have issues after trying these solutions:
 ## Known Limitations
 
 - iOS Safari requires HTTPS for camera access (except localhost)
-- Virtual camera requires OBS Virtual Camera driver
+- Virtual camera requires Unity Capture driver
 - Performance depends on network quality
 - iOS device screen lock prevention may not work on all iOS versions
 - Some antivirus software may flag the executable as false positive

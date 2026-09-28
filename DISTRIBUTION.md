@@ -12,7 +12,7 @@ Approximately 66 MB (includes all dependencies)
 
 ### System Requirements
 - Windows 10 or Windows 11 (64-bit)
-- OBS Studio (required for virtual camera functionality)
+- Unity Capture (required for virtual camera functionality)
 - Wi-Fi network for iOS device connection
 - iOS device with Safari browser
 
@@ -36,27 +36,25 @@ For users who prefer to run from source:
 6. Install dependencies: `pip install -r requirements.txt`
 7. Run the server: `python app.py`
 
-### OBS Virtual Camera Setup (Required)
+### Unity Capture Setup (Required)
 
-The application requires OBS Studio to provide the virtual camera driver:
+The application requires Unity Capture to provide the virtual camera driver:
 
-1. **Download OBS Studio**
-   - Visit: https://obsproject.com/
-   - Download and install OBS Studio (free)
+1. **Download Unity Capture**
+   - Visit: https://github.com/schellingb/UnityCapture/releases
+   - Download and run the UnityCaptureSetup.exe installer
 
-2. **Enable Virtual Camera**
-   - Open OBS Studio
-   - Go to **Tools > Virtual Camera**
-   - Click **Start** to enable the Virtual Camera
-   - Verify "OBS Virtual Camera" appears in Windows Device Manager
+2. **Complete Installation**
+   - Run the installation wizard
+   - Verify "Unity Video Capture" appears in Windows Device Manager
 
 3. **Use the Virtual Camera**
-   - After starting the iOS WebCam Bridge, the stream will appear as "OBS Virtual Camera"
-   - Select "OBS Virtual Camera" in Zoom, Teams, Google Meet, OBS, or other applications
+   - After starting the iOS WebCam Bridge, the stream will appear as "Unity Video Capture"
+   - Select "Unity Video Capture" in Zoom, Teams, Google Meet, or other applications
 
 ### Quick Start Guide
 
-1. **Install OBS Studio** and enable the Virtual Camera (see above)
+1. **Install Unity Capture** (see above)
 
 2. **Run the Application**
    - Double-click `ioswebcam.exe`
@@ -74,13 +72,13 @@ The application requires OBS Studio to provide the virtual camera driver:
 
 4. **Start Streaming**
    - The video will appear in the virtual camera
-   - Select "OBS Virtual Camera" in your video conferencing application
+   - Select "Unity Video Capture" in your video conferencing application
 
 ### Troubleshooting
 
 See `TROUBLESHOOTING.md` for detailed troubleshooting guides covering:
 - Camera access issues
-- OBS Virtual Camera problems
+- Unity Capture problems
 - Network connectivity issues
 - Performance optimization
 - iOS device issues
