@@ -11,6 +11,7 @@ a = Analysis(
     datas=[
         ('templates', 'templates'),
         ('static', 'static'),
+        ('drivers/unitycapture', 'drivers/unitycapture'),  # Bundled virtual camera driver
     ],
     hiddenimports=[
         'flask',

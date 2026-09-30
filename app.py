@@ -19,6 +19,7 @@ import datetime
 import os
 import sys
 import shutil
+import winreg
 
 app = Flask(__name__)
 app.config['TEMPLATES_AUTO_RELOAD'] = True
@@ -118,6 +119,75 @@ def frame_worker():
         except Exception as e:
             print(f"Error in frame worker: {e}")
             continue
+
+def is_unity_capture_installed():
+    """Check registry to see if Unity Capture DirectShow filter is registered."""
+    clsid = r'CLSID\{8E14549B-DB61-4309-AFA1-3578E927E935}'
+    try:
+        winreg.OpenKey(winreg.HKEY_CLASSES_ROOT, clsid)
+        return True
+    except FileNotFoundError:
+        return False
+
+
+def auto_install_unity_capture():
+    """Bundle the Unity Capture DLLs inside the EXE and register them silently.
+
+    Works both when running as a PyInstaller EXE (sys._MEIPASS) and during
+    normal Python development (relative 'drivers' folder).
+    """
+    import subprocess
+
+    if is_unity_capture_installed():
+        print("[driver] Unity Capture already installed.")
+        return True
+
+    print("[driver] Unity Capture not found. Installing automatically...")
+
+    # Locate bundled DLLs
+    if getattr(sys, 'frozen', False):          # Running as PyInstaller EXE
+        base = sys._MEIPASS
+    else:                                       # Running as plain Python
+        base = os.path.dirname(os.path.abspath(__file__))
+
+    dll32 = os.path.join(base, 'drivers', 'unitycapture', 'UnityCaptureFilter32.dll')
+    dll64 = os.path.join(base, 'drivers', 'unitycapture', 'UnityCaptureFilter64.dll')
+
+    if not os.path.exists(dll64):
+        print(f"[driver] ERROR: Bundled DLL not found at {dll64}")
+        return False
+
+    print("[driver] A UAC (Admin) prompt will appear — please click YES to install the virtual camera driver.")
+    print("[driver] This is a one-time install. It will never ask again.")
+
+    try:
+        # Register 64-bit DLL (required) — runas triggers UAC admin elevation
+        result64 = subprocess.run(
+            ['powershell', '-Command',
+             f'Start-Process regsvr32 -ArgumentList \'/s \"{ dll64 }\"\' -Verb RunAs -Wait -PassThru | Select-Object -ExpandProperty ExitCode'],
+            capture_output=True, text=True, timeout=60
+        )
+
+        # Register 32-bit DLL (for 32-bit apps like some older Zoom builds)
+        if os.path.exists(dll32):
+            subprocess.run(
+                ['powershell', '-Command',
+                 f'Start-Process regsvr32 -ArgumentList \'/s \"{ dll32 }\"\' -Verb RunAs -Wait -PassThru | Select-Object -ExpandProperty ExitCode'],
+                capture_output=True, text=True, timeout=60
+            )
+
+        if is_unity_capture_installed():
+            print("[driver] Unity Capture installed successfully!")
+            return True
+        else:
+            print("[driver] Installation may have been cancelled or failed.")
+            print("[driver] If UAC was denied, please re-run as Administrator.")
+            return False
+
+    except Exception as e:
+        print(f"[driver] Auto-install failed: {e}")
+        return False
+
 
 def init_virtual_camera():
     """Initialize virtual camera with retry mechanism."""
@@ -490,13 +560,17 @@ if __name__ == '__main__':
     worker_thread = threading.Thread(target=frame_worker, daemon=True)
     worker_thread.start()
 
+    # ── Auto-install Unity Capture driver if missing ──────────────────────
+    auto_install_unity_capture()
+
     # ── Virtual camera ───────────────────────────────────────────────────
     print("Initializing Unity Capture virtual camera...")
     if init_virtual_camera():
         print(f"Virtual camera ready: {cam.device} ({cam.width}x{cam.height} @ {cam.fps} FPS)")
         print("You can now select it in Zoom, Teams, Meet, OBS, etc.\n")
     else:
-        print("[WARN] Unity Capture driver not found. Camera output disabled.")
-        print("       Download from: https://github.com/schellingb/UnityCapture/releases\n")
+        print("[WARN] Unity Capture driver not found or install was cancelled.")
+        print("       Re-run as Administrator, or install manually:")
+        print("       https://github.com/schellingb/UnityCapture/releases\n")
 
     socketio.run(app, host='0.0.0.0', port=5000, ssl_context=ssl_ctx, allow_unsafe_werkzeug=True)
