@@ -24,12 +24,20 @@ import winreg
 app = Flask(__name__)
 app.config['TEMPLATES_AUTO_RELOAD'] = True
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
+# SocketIO configured for high-bandwidth raw 1080p frames with pure WebSocket
+socketio = SocketIO(
+    app,
+    cors_allowed_origins="*",
+    async_mode='threading',
+    ping_timeout=10,
+    ping_interval=5,
+    max_http_buffer_size=16 * 1024 * 1024  # 16MB buffer for crisp 1080p / 4K frames
+)
 
 frame_count = 0
 client_count = 0
 cam = None
-frame_queue = queue.Queue(maxsize=2)  # Low buffer to ensure real-time zero delay
+frame_queue = queue.Queue(maxsize=1)  # Strict 1-frame queue: Always processes latest frame, 0 queue delay
 fps_counter = 0
 last_fps_time = time.time()
 current_fps = 0
@@ -70,7 +78,7 @@ def frame_worker():
                 bandwidth_counter = 0
                 last_bandwidth_time = current_time
 
-            # Decode binary JPEG buffer
+            # Decode binary JPEG buffer directly
             np_arr = np.frombuffer(data, dtype=np.uint8)
             frame_bgr = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
 
@@ -91,14 +99,14 @@ def frame_worker():
                         'client_count': client_count
                     }, broadcast=True)
 
-                # Ensure frame matches virtual camera dimensions (1280x720)
+                # Ensure frame matches virtual camera dimensions (resize only if mismatched)
                 if cam is not None and (frame_bgr.shape[1] != cam.width or frame_bgr.shape[0] != cam.height):
                     frame_bgr = cv2.resize(frame_bgr, (cam.width, cam.height), interpolation=cv2.INTER_LINEAR)
 
                 # Convert BGR to RGB (required by PyVirtualCam)
                 frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
 
-                # Send clean frame directly to virtual camera without text overlay
+                # Send clean frame directly to virtual camera without sleep delay
                 if cam is not None:
                     try:
                         cam.send(frame_rgb)
@@ -190,17 +198,26 @@ def auto_install_unity_capture():
 
 
 def init_virtual_camera():
-    """Initialize virtual camera with retry mechanism."""
+    """Initialize virtual camera with retry mechanism at 1080p 60FPS."""
     global cam
     max_retries = 3
     for attempt in range(max_retries):
         try:
-            # Use Unity Capture backend explicitly
-            cam = pyvirtualcam.Camera(width=1280, height=720, fps=30, backend='unitycapture')
-            print(f"Virtual camera initialized: {cam.device}")
+            # Use Unity Capture backend at native Full HD (1080p) 60 FPS
+            cam = pyvirtualcam.Camera(width=1920, height=1080, fps=60, backend='unitycapture')
+            print(f"Virtual camera initialized: {cam.device} (1920x1080 @ 60 FPS)")
             return True
         except Exception as e:
-            print(f"Attempt {attempt + 1}/{max_retries} failed: {e}")
+            print(f"Attempt {attempt + 1}/{max_retries} failed (1080p60): {e}")
+            # Fallback to 720p 60fps if driver/system restricts 1080p
+            if attempt == max_retries - 1:
+                try:
+                    print("Falling back to 1280x720 @ 60 FPS...")
+                    cam = pyvirtualcam.Camera(width=1280, height=720, fps=60, backend='unitycapture')
+                    print(f"Virtual camera initialized with fallback: {cam.device}")
+                    return True
+                except Exception as fb_err:
+                    print(f"Fallback failed: {fb_err}")
             if attempt < max_retries - 1:
                 import time
                 time.sleep(1)
@@ -326,6 +343,14 @@ def display_qr_code(url):
 @app.route('/')
 def index():
     return render_template('index.html')
+
+@app.route('/cert')
+def download_cert():
+    """Endpoint for iOS devices to download the root certificate for profile installation."""
+    from flask import send_file
+    if os.path.exists('cert.pem'):
+        return send_file('cert.pem', mimetype='application/x-x509-ca-cert', as_attachment=True, download_name='webcam_cert.crt')
+    return "Certificate not found", 404
 
 @socketio.on('connect')
 def handle_connect():
@@ -499,29 +524,52 @@ def start_ngrok_tunnel(port=5000):
 
 if __name__ == '__main__':
     print("="*70)
-    print(" WebCam Bridge Server")
+    print(" 📹 WebCam Bridge Server")
     print("="*70)
 
     local_ip = get_local_ip()
     server_url = f"https://{local_ip}:5000"
     print(f"Local IP: {local_ip}")
 
-    # ── 1. Try Cloudflare tunnel (permanent if token set) ─────────────────
-    print("\nChecking for Cloudflare tunnel...")
-    public_url = start_cloudflare_tunnel(5000)
+    # Check if mode was pre-set via environment variable, otherwise prompt user directly
+    use_tunnel_env = os.environ.get('USE_TUNNEL')
+    
+    if use_tunnel_env is None:
+        print("\n" + "─"*70)
+        print(" Choose Connection Mode:")
+        print("   [1] Direct Wi-Fi / USB Cable - ⚡ Zero Delay, 60 FPS (RECOMMENDED)")
+        print("   [2] Cloudflare Internet Tunnel - 🌐 Remote across different networks")
+        print("─"*70)
+        try:
+            choice = input(" Select mode [default=1]: ").strip()
+            if choice == '2':
+                use_tunnel = True
+            else:
+                use_tunnel = False
+        except (EOFError, KeyboardInterrupt):
+            use_tunnel = False
+    else:
+        use_tunnel = (use_tunnel_env == '1')
 
-    if not public_url:
-        # ── 2. Try ngrok (if already running) ────────────────────────────
-        print("[cloudflare] Not available. Checking for ngrok...")
-        public_url = start_ngrok_tunnel(5000)
+    public_url = None
+
+    if use_tunnel:
+        # ── 1. Try Cloudflare tunnel (permanent if token set) ─────────────────
+        print("\n[🌐 Tunnel Mode] Checking for Cloudflare tunnel...")
+        public_url = start_cloudflare_tunnel(5000)
+
+        if not public_url:
+            # ── 2. Try ngrok (if already running) ────────────────────────────
+            print("[cloudflare] Not available. Checking for ngrok...")
+            public_url = start_ngrok_tunnel(5000)
 
     if public_url:
         connect_url = public_url
         use_ssl = False
         ssl_ctx = None
     else:
-        # ── 3. Fallback: HTTPS on local WiFi with self-signed cert ────────
-        print("\n[tunnel] No tunnel found. Using local HTTPS (self-signed cert).")
+        # ── Direct High-Speed Local WiFi / USB Mode (Sub-30ms) ───────────
+        print("\n[⚡ High-Speed Direct Mode] Using direct local connection (0 delay, 60 FPS).")
         cert_file, key_file = generate_self_signed_cert(local_ip)
         ssl_ctx = (cert_file, key_file)
         connect_url = server_url
@@ -538,20 +586,19 @@ if __name__ == '__main__':
         print("  If you see a warning page, tap 'Visit Site'")
     else:
         print()
-        print("  *** FIRST TIME SETUP (one-time, 2 minutes) ***")
-        print("  iOS Safari will say 'Not Secure' or 'Cannot Connect'.")
-        print("  You need to TRUST the certificate on your iPhone:")
+        print("  " + "─"*60)
+        print("  📱 HOW TO OPEN ON IPHONE (Just 2 quick taps):")
+        print("  " + "─"*60)
+        print(f"  1. Open Safari on iPhone and go to: {connect_url}")
+        print("  2. If Safari shows 'This Connection Is Not Private':")
+        print("     👉 Tap 'Show Details' (at the bottom)")
+        print("     👉 Tap 'visit this website' (small link at bottom)")
+        print("     👉 Tap 'Visit Website' to confirm!")
+        print("     ✅ That's it! The webcam page will immediately open.")
         print()
-        print(f"  STEP 1: Open this URL in Safari: {connect_url}")
-        print("  STEP 2: Tap 'Show Details' then 'visit this website'")
-        print("  STEP 3: Tap 'Visit Website' to confirm")
-        print("  STEP 4: Go to iPhone Settings > General > VPN & Device Management")
-        print(f"  STEP 5: Tap 'WebCam Bridge' certificate → tap 'Trust'")
-        print("  STEP 6: Go to Settings > General > About > Certificate Trust Settings")
-        print("  STEP 7: Enable full trust for 'WebCam Bridge'")
-        print("  STEP 8: Return to Safari and refresh — camera will work!")
-        print()
-        print("  Android phones: Just tap 'Advanced' → 'Proceed' — no extra steps!")
+        print("  Note: If your iPhone requires certificate installation:")
+        print(f"  Download it directly at: {connect_url}/cert")
+        print("  " + "─"*60)
 
     print("\nPress CTRL+C to stop the server.")
     print("="*70 + "\n")

@@ -38,5 +38,9 @@ wheels/
 .DS_Store
 Thumbs.db
 
+# Local generated SSL certificates
+*.pem
+cert_ip.txt
+
 # Engineering document (already in repo as reference)
 # iOS_WebCam_Bridge_Engineering_Doc.docx

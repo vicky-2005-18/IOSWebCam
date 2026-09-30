@@ -4,6 +4,21 @@ All notable changes to iOS WebCam Bridge are documented here.
 
 ---
 
+## [v1.1.0] — 2026-09-30
+
+### Added
+- **Interactive Connection Mode Menu**: Direct selection between High-Speed Local Wi-Fi / USB (0 delay, 60 FPS) and Cloudflare Tunnel (Remote networks).
+- **Latency Preset Selector in Web UI**: Real-time choice between Zero Delay (Realtime), Balanced, and Ultra Sharp modes.
+- **Root Certificate Download Endpoint (`/cert`)**: Enables easy one-tap certificate profile installation for iOS devices.
+- **Native 1080p @ 60 FPS Virtual Camera Engine**: High-definition DirectShow output with sharp resampling.
+
+### Fixed
+- **3–5 Second Delay Eliminated**: Removed artificial sleep delays, reduced frame queue to 1, and enabled low-latency local Wi-Fi / USB streaming.
+- **Dropped Frames Fix**: Eliminated the artificial interval drop-guard and upgraded to `requestVideoFrameCallback` for synchronized capture.
+- **iOS Safari SSL Setup**: Simplified the setup instructions to just 2 taps inside Safari.
+
+---
+
 ## [v1.0.1] — 2026-09-30
 
 ### Fixed

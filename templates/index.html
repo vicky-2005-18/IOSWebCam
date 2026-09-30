@@ -53,9 +53,15 @@
                     <option value="60" selected>60 FPS</option>
                 </select>
                 <select id="resolution-selector" style="flex: 1; min-width: 110px; padding: 12px; background: #2196F3; color: white; border: none; border-radius: 8px; font-size: 16px; cursor: pointer;">
-                    <option value="480">480p</option>
-                    <option value="720" selected>720p</option>
-                    <option value="1080">1080p</option>
+                    <option value="720" selected>720p (Ultra Fast 60 FPS)</option>
+                    <option value="1080">1080p (Studio Full HD)</option>
+                    <option value="480">480p (Eco Data)</option>
+                    <option value="2160">4K (Ultra HD)</option>
+                </select>
+                <select id="latency-mode" style="flex: 1; min-width: 130px; padding: 12px; background: #009688; color: white; border: none; border-radius: 8px; font-size: 16px; cursor: pointer;">
+                    <option value="zero-delay" selected>⚡ Zero Delay (Realtime)</option>
+                    <option value="balanced">⚖️ Balanced</option>
+                    <option value="high-quality">🎨 Ultra Sharp (Local WiFi)</option>
                 </select>
             </div>
         </div>
@@ -66,8 +72,10 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/nosleep.js@0.12.1/dist/NoSleep.min.js"></script>
     <script>
+        // Force pure WebSocket to eliminate HTTP polling delays
         const socket = io({
-            transports: ['websocket', 'polling'],
+            transports: ['websocket'],
+            upgrade: false,
             reconnectionAttempts: 10,
             timeout: 10000
         });
@@ -86,20 +94,21 @@
         let isStreaming = false;
         let lastFrameTime = 0;
         let targetFps = 60; // 60 FPS target
-        let frameInterval = 16.6; // ~60 FPS interval in ms
+        let frameInterval = 1000 / 60; // ~16.6ms
         let fpsCounter = 0;
         let lastFpsTime = performance.now();
         let currentFps = 0;
         let droppedFrames = 0;
 
-        // Network quality monitoring
+        // Network quality monitoring & low-latency JPEG compression
         let currentPing = 0;
-        pingHistory = [];
-        let currentQuality = 0.70; // Optimized default quality for sub-50ms latency
-        let resolutionLabel = '720p';
+        let pingHistory = [];
+        let currentQuality = 0.78; // Sweet spot: crisp 1080p without compression/network latency
+        let resolutionLabel = '1080p';
         let packetLossRate = 0;
         let acknowledgedFrames = 0;
         let totalFramesSent = 0;
+        let isSendingFrame = false;
 
         // Client-side latency tracking
         let captureTimestamp = 0;
@@ -118,14 +127,14 @@
 
         // Camera controls
         let currentFacingMode = 'user'; // 'user' = front, 'environment' = rear
-        let currentResolution = 720; // Default resolution
+        let currentResolution = 720; // Default: Fast 720p 60 FPS for zero-lag real-time responsiveness
         let torchEnabled = false;
         let isMirrored = false;
         let imageCapture = null;
         
         socket.on('connect', () => {
-            console.log('Socket connected successfully');
-            statusEl.textContent = 'Connected to Server';
+            console.log('Socket connected successfully via WebSocket');
+            statusEl.textContent = 'Connected to Server (WebSocket High-Speed)';
             statusEl.className = 'status connected';
         });
 
@@ -151,16 +160,16 @@
         });
 
         socket.on('frame_ack', () => {
+            isSendingFrame = false;
             acknowledgedFrames++;
             if (totalFramesSent > 0) {
                 packetLossRate = 1 - (acknowledgedFrames / totalFramesSent);
             }
-            updateNetworkStatus();
         });
 
         socket.on('telemetry', (data) => {
             const telemetryInfo = ` | Server FPS: ${data.fps} | BW: ${data.bandwidth.toFixed(1)} Mbps`;
-            frameCounterEl.textContent = `Frames: ${frameCount} | FPS: ${currentFps} | Dropped: ${droppedFrames}${telemetryInfo}`;
+            frameCounterEl.textContent = `Frames: ${frameCount} | FPS: ${currentFps} | Dropped: ${droppedFrames} | Ping: ${Math.round(currentPing)}ms${telemetryInfo}`;
         });
         
         function showError(message) {
@@ -173,18 +182,18 @@
         }
         
         function updateFrameCounter() {
-            frameCounterEl.textContent = `Frames: ${frameCount} | FPS: ${currentFps} | Dropped: ${droppedFrames}`;
+            frameCounterEl.textContent = `Frames: ${frameCount} | FPS: ${currentFps} | Dropped: ${droppedFrames} | Ping: ${Math.round(currentPing)}ms`;
         }
 
         function updateNetworkStatus() {
-            if (currentPing < 50) {
-                currentQuality = 0.75;
-            } else if (currentPing < 100) {
-                currentQuality = 0.68;
-            } else if (currentPing < 200) {
-                currentQuality = 0.58;
+            if (currentPing < 40) {
+                currentQuality = 0.82;
+            } else if (currentPing < 80) {
+                currentQuality = 0.78;
+            } else if (currentPing < 150) {
+                currentQuality = 0.70;
             } else {
-                currentQuality = 0.50;
+                currentQuality = 0.62;
             }
         }
 
@@ -193,7 +202,7 @@
             socket.emit('ping', { timestamp: performance.now() });
         }
 
-        setInterval(measurePing, 5000);
+        setInterval(measurePing, 4000);
 
         function playSilentAudio() {
             try {
@@ -234,7 +243,7 @@
         }
 
         async function startCamera() {
-            debugLog('Button tapped. Checking mediaDevices...');
+            debugLog('Requesting camera permissions...');
             const startBtn = document.getElementById('start-btn');
             if (startBtn) {
                 startBtn.textContent = 'Requesting Camera Access...';
@@ -243,52 +252,52 @@
             hideError();
 
             try {
-                // Check for secure context first
                 if (!window.isSecureContext) {
                     throw new Error(
                         '⚠️ Camera access requires a secure connection!\n\n' +
                         'You opened this page over HTTP, but iOS requires HTTPS for camera access.\n\n' +
-                        '✅ Fix: Use the HTTPS link shown in the terminal:\n' +
-                        '  - It should start with https:// (not http://)\n' +
-                        '  - On first visit, tap "Show Details" → "visit this website"\n' +
-                        '  - For iOS: Follow the certificate trust steps shown in terminal'
+                        '✅ Fix: Use the HTTPS link shown in the terminal.'
                     );
                 }
 
                 if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
                     throw new Error(
                         '⚠️ Camera API not available!\n\n' +
-                        'Your browser does not support camera access.\n\n' +
-                        '✅ Fix: Use a modern browser (Safari on iOS, Chrome/Firefox on desktop)'
+                        'Your browser does not support camera access.'
                     );
                 }
 
-                debugLog('Opening camera prompt...');
-                // Request camera stream with standard iOS fallback
-                let stream = null;
                 const resolutions = {
                     480: { width: 640, height: 480 },
                     720: { width: 1280, height: 720 },
-                    1080: { width: 1920, height: 1080 }
+                    1080: { width: 1920, height: 1080 },
+                    2160: { width: 3840, height: 2160 }
                 };
-                const res = resolutions[currentResolution] || { width: 1280, height: 720 };
+                const res = resolutions[currentResolution] || { width: 1920, height: 1080 };
+                debugLog(`Requesting ${res.width}x${res.height} @ ${targetFps} FPS...`);
 
+                let stream = null;
                 try {
+                    // Try high priority exact/ideal constraints first
                     stream = await navigator.mediaDevices.getUserMedia({
                         video: {
-                            width: { ideal: res.width },
-                            height: { ideal: res.height },
+                            width: { ideal: res.width, min: 1280 },
+                            height: { ideal: res.height, min: 720 },
                             frameRate: { ideal: targetFps, min: 30 },
                             facingMode: currentFacingMode
                         },
                         audio: false
                     });
-                    debugLog(`Camera stream acquired at ${targetFps} FPS target.`);
                 } catch (firstErr) {
-                    debugLog('Retrying with basic video constraint...');
-                    // Fallback to minimal video constraint for older iOS Safari
-                    stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-                    debugLog('Camera stream acquired with fallback.');
+                    debugLog('Falling back to standard camera constraint...');
+                    stream = await navigator.mediaDevices.getUserMedia({
+                        video: {
+                            facingMode: currentFacingMode,
+                            width: { ideal: 1280 },
+                            height: { ideal: 720 }
+                        },
+                        audio: false
+                    });
                 }
 
                 localStream = stream;
@@ -300,20 +309,35 @@
                 try {
                     await videoPreview.play();
                 } catch (playErr) {
-                    console.warn('Autoplay caught:', playErr);
+                    console.warn('Autoplay warning:', playErr);
                 }
 
                 const videoTrack = localStream.getVideoTracks()[0];
+                const actualSettings = videoTrack.getSettings ? videoTrack.getSettings() : {};
+                const actualWidth = actualSettings.width || videoPreview.videoWidth || res.width;
+                const actualHeight = actualSettings.height || videoPreview.videoHeight || res.height;
+                const actualFps = actualSettings.frameRate || targetFps;
+                debugLog(`Active: ${actualWidth}x${actualHeight} @ ~${Math.round(actualFps)} FPS (Quality: ${Math.round(currentQuality*100)}%)`);
+
                 if ('ImageCapture' in window) {
                     try {
                         imageCapture = new ImageCapture(videoTrack);
                     } catch (e) {}
                 }
 
+                // Match canvas 1:1 with actual camera stream to eliminate blur & scaling distortion
                 canvas = document.createElement('canvas');
-                canvas.width = res.width;
-                canvas.height = res.height;
-                ctx = canvas.getContext('2d');
+                canvas.width = actualWidth;
+                canvas.height = actualHeight;
+                ctx = canvas.getContext('2d', { alpha: false, desynchronized: true });
+
+                // Synchronize canvas size dynamically when video dimensions resolve
+                videoPreview.onloadedmetadata = () => {
+                    if (videoPreview.videoWidth && videoPreview.videoHeight) {
+                        canvas.width = videoPreview.videoWidth;
+                        canvas.height = videoPreview.videoHeight;
+                    }
+                };
 
                 isStreaming = true;
                 hideError();
@@ -334,7 +358,6 @@
             } catch (error) {
                 console.error('Camera access error:', error);
                 
-                // Update status banner with specific error
                 if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
                     statusEl.textContent = 'Camera permission denied. Please allow camera access and reload.';
                     statusEl.className = 'status error';
@@ -423,15 +446,36 @@
                 return;
             }
 
+            function scheduleNextFrame() {
+                if (!isStreaming) return;
+                if ('requestVideoFrameCallback' in HTMLVideoElement.prototype) {
+                    videoPreview.requestVideoFrameCallback(captureFrame);
+                } else {
+                    requestAnimationFrame(captureFrame);
+                }
+            }
+
             function captureFrame(currentTime) {
                 if (!isStreaming) {
                     return;
                 }
 
-                requestAnimationFrame(captureFrame);
+                scheduleNextFrame();
 
                 // Calculate delta time for frame rate control
                 const delta = currentTime - lastFrameTime;
+
+                // Skip frame if incoming faster than target FPS interval
+                if (delta < frameInterval) {
+                    return;
+                }
+
+                // If prior frame is still processing, skip this frame to prevent buffer lag
+                if (isSendingFrame) {
+                    return;
+                }
+
+                lastFrameTime = currentTime - (delta % frameInterval);
 
                 // Calculate FPS every second
                 fpsCounter++;
@@ -441,21 +485,6 @@
                     lastFpsTime = currentTime;
                     updateFrameCounter();
                 }
-
-                // Skip frame if too soon (throttling)
-                if (delta < frameInterval) {
-                    return;
-                }
-
-                // Skip frame if way too late (burst handling)
-                if (delta > frameInterval * 2) {
-                    droppedFrames++;
-                    lastFrameTime = currentTime;
-                    return;
-                }
-
-                // Jitter compensation: adjust timing to maintain smooth 30 FPS
-                lastFrameTime = currentTime - (delta % frameInterval);
 
                 // Capture timestamp for latency tracking
                 captureTimestamp = performance.now();
@@ -469,15 +498,13 @@
                 ctx.drawImage(videoPreview, 0, 0, canvas.width, canvas.height);
                 ctx.restore();
 
-                // Convert to JPEG blob with dynamic quality
-                canvas.toBlob((blob) => {
-                    if (blob && isStreaming) {
-                        // Track transmit timestamp
-                        transmitTimestamp = performance.now();
-                        // Calculate capture latency
-                        const captureLatency = transmitTimestamp - captureTimestamp;
+                isSendingFrame = true;
 
-                        // Transmit binary frame via WebSocket with timestamp
+                // Convert to JPEG blob with optimized quality for real-time speed
+                canvas.toBlob((blob) => {
+                    isSendingFrame = false;
+                    if (blob && isStreaming) {
+                        transmitTimestamp = performance.now();
                         socket.emit('video_frame', blob);
                         totalFramesSent++;
                         frameCount++;
@@ -485,7 +512,7 @@
                 }, 'image/jpeg', currentQuality);
             }
 
-            requestAnimationFrame(captureFrame);
+            scheduleNextFrame();
         }
         
         // Initialize on page load
@@ -561,6 +588,22 @@
             // Restart camera with new resolution
             await startCamera();
         });
+
+        // Latency preset mode selector
+        const latencySelector = document.getElementById('latency-mode');
+        if (latencySelector) {
+            latencySelector.addEventListener('change', (e) => {
+                const mode = e.target.value;
+                if (mode === 'zero-delay') {
+                    currentQuality = 0.68;
+                } else if (mode === 'balanced') {
+                    currentQuality = 0.78;
+                } else if (mode === 'high-quality') {
+                    currentQuality = 0.88;
+                }
+                debugLog(`Latency mode: ${mode} (JPEG quality: ${Math.round(currentQuality*100)}%)`);
+            });
+        }
         
         // Handle page visibility change (pause when hidden to save battery)
         document.addEventListener('visibilitychange', () => {

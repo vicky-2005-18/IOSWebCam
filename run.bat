@@ -13,10 +13,6 @@ if not exist "venv\Scripts\python.exe" (
     exit /b 1
 )
 
-REM ── Cloudflare Quick Tunnel (automatic HTTPS, no account needed) ────────
-REM The app will auto-start a Cloudflare tunnel and show the URL + QR code.
-REM URL changes each restart. For a permanent URL you need a domain on Cloudflare.
-
 echo Starting WebCam Bridge...
 echo.
 venv\Scripts\python.exe app.py
