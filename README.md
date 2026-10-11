@@ -2,7 +2,7 @@
 
 > Turn your iPhone or Android into a wireless webcam for Windows — no app install needed.
 
-[![Version](https://img.shields.io/badge/version-v1.0.1-brightgreen)](https://github.com/vicky-2005-18/IOSWebCam/releases/tag/v1.0.1)
+[![Version](https://img.shields.io/badge/version-v1.2.0-brightgreen)](https://github.com/vicky-2005-18/IOSWebCam/releases/tag/v1.2.0)
 [![Python](https://img.shields.io/badge/Python-3.9%2B-blue?logo=python)](https://python.org)
 [![Flask](https://img.shields.io/badge/Flask-SocketIO-green?logo=flask)](https://flask-socketio.readthedocs.io)
 [![Platform](https://img.shields.io/badge/Platform-Windows-blue?logo=windows)](https://github.com/vicky-2005-18/IOSWebCam)
