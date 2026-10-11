@@ -2,207 +2,290 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>iOS WebCam Bridge</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>📱 iOS WebCam Bridge - Camera Stream</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-    <style>
-        #video-preview {
-            width: 100%;
-            max-width: 1280px;
-            min-height: 260px;
-            height: auto;
-            background: #111;
-            border-radius: 10px;
-            border: 2px solid #333;
-            display: block;
-            object-fit: cover;
-        }
-    </style>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 </head>
 <body>
-    <div class="container">
-        <div id="connection-status" class="status disconnected">Disconnected</div>
-        <div class="frame-counter">Frames: 0</div>
-        <div id="error-message">
-            <div id="error-text"></div>
-            <button id="retry-button">Retry</button>
+    <!-- OLED Stealth / Battery Saver Overlay -->
+    <div id="stealth-overlay" onclick="toggleStealthMode()">
+        <div class="stealth-clock" id="stealth-clock">00:00</div>
+        <div class="stealth-status">
+            <span class="stealth-pulse"></span> Streaming to PC (OLED Battery Saver Active)
         </div>
-        <div id="info-message" style="display: none;"></div>
+        <div style="font-size: 11px; color: #1e293b; margin-top: 14px;">Tap anywhere to wake display</div>
+    </div>
 
-        <!-- Big Start Streaming button for mobile tap permissions -->
-        <button id="start-btn" onclick="startCamera()" style="display: block; width: 100%; padding: 18px; font-size: 18px; font-weight: bold; background: #28a745; color: #fff; border: none; border-radius: 10px; margin-bottom: 15px; cursor: pointer; box-shadow: 0 4px 6px rgba(0,0,0,0.3); -webkit-tap-highlight-color: transparent;">
-            ▶ Start Camera & Stream
-        </button>
-
-        <div id="debug-log" style="font-family: monospace; font-size: 13px; color: #ffeb3b; background: rgba(0,0,0,0.6); padding: 8px; border-radius: 6px; margin-bottom: 10px; display: none;"></div>
-
-        <!-- Control Panel -->
-        <div id="control-panel" style="display: none; background: rgba(0,0,0,0.7); padding: 15px; border-radius: 10px; margin-bottom: 15px;">
-            <div style="display: flex; gap: 10px; flex-wrap: wrap; justify-content: center;">
-                <button id="camera-toggle" style="flex: 1; min-width: 120px; padding: 12px; background: #4CAF50; color: white; border: none; border-radius: 8px; font-size: 16px; cursor: pointer;">
-                    📷 Switch Camera
-                </button>
-                <button id="torch-toggle" style="flex: 1; min-width: 120px; padding: 12px; background: #FF9800; color: white; border: none; border-radius: 8px; font-size: 16px; cursor: pointer; disabled: true;">
-                    🔦 Flashlight
-                </button>
-                <button id="mirror-toggle" style="flex: 1; min-width: 120px; padding: 12px; background: #9C27B0; color: white; border: none; border-radius: 8px; font-size: 16px; cursor: pointer;">
-                    🪞 Flip / Mirror
-                </button>
-                <select id="fps-selector" style="flex: 1; min-width: 100px; padding: 12px; background: #E91E63; color: white; border: none; border-radius: 8px; font-size: 16px; cursor: pointer;">
-                    <option value="30">30 FPS</option>
-                    <option value="60" selected>60 FPS</option>
-                </select>
-                <select id="resolution-selector" style="flex: 1; min-width: 110px; padding: 12px; background: #2196F3; color: white; border: none; border-radius: 8px; font-size: 16px; cursor: pointer;">
-                    <option value="720" selected>720p (Ultra Fast 60 FPS)</option>
-                    <option value="1080">1080p (Studio Full HD)</option>
-                    <option value="480">480p (Eco Data)</option>
-                    <option value="2160">4K (Ultra HD)</option>
-                </select>
-                <select id="latency-mode" style="flex: 1; min-width: 130px; padding: 12px; background: #009688; color: white; border: none; border-radius: 8px; font-size: 16px; cursor: pointer;">
-                    <option value="zero-delay" selected>⚡ Zero Delay (Realtime)</option>
-                    <option value="balanced">⚖️ Balanced</option>
-                    <option value="high-quality">🎨 Ultra Sharp (Local WiFi)</option>
-                </select>
+    <div class="mobile-app">
+        <!-- Header & Status Bar -->
+        <div class="mobile-header">
+            <div id="connection-status" class="status-badge disconnected">
+                <span class="status-dot"></span>
+                <span id="status-text">Disconnected</span>
+            </div>
+            <div class="telemetry-bar">
+                <div class="telemetry-pill">
+                    <span>⚡</span> <span id="fps-val">0</span> FPS
+                </div>
+                <div class="telemetry-pill">
+                    <span>📶</span> <span id="ping-val">--</span>ms
+                </div>
+                <div class="telemetry-pill" id="battery-pill" style="display: none;">
+                    <span>🔋</span> <span id="battery-val">--%</span>
+                </div>
             </div>
         </div>
 
-        <video id="video-preview" autoplay playsinline muted></video>
+        <!-- Notification / Error Banner -->
+        <div id="error-message" class="glass-panel" style="display: none; padding: 14px; border-color: rgba(239, 68, 68, 0.4); background: rgba(239, 68, 68, 0.15);">
+            <div id="error-text" style="font-size: 14px; color: #fca5a5; margin-bottom: 8px;"></div>
+            <button id="retry-button" class="btn btn-primary" style="padding: 6px 14px; font-size: 13px;">Retry Camera</button>
+        </div>
+
+        <div id="debug-log" style="display: none; font-family: monospace; font-size: 12px; color: #fde047; background: rgba(0,0,0,0.7); padding: 8px 12px; border-radius: 8px;"></div>
+
+        <!-- Big Start Streaming Button (iOS Audio/Video Gesture trigger) -->
+        <button id="start-btn" onclick="startCamera()" class="btn btn-success" style="padding: 18px; font-size: 18px; width: 100%; border-radius: 14px; box-shadow: 0 4px 20px rgba(16, 185, 129, 0.4);">
+            ▶ Start Camera & Stream
+        </button>
+
+        <!-- Viewfinder with HUD Overlay -->
+        <div class="preview-container">
+            <video id="video-preview" autoplay playsinline muted></video>
+            
+            <div class="viewfinder-hud">
+                <div class="hud-pill" id="hud-lens">📷 Front</div>
+                <div class="hud-pill" id="hud-res">1080p</div>
+            </div>
+        </div>
+
+        <!-- Control Deck -->
+        <div id="control-panel" class="glass-panel mobile-controls" style="display: none;">
+            
+            <!-- Camera Lens / Device Selector -->
+            <div style="display: flex; gap: 8px;">
+                <select id="camera-device-select" class="control-select" onchange="onCameraDeviceSelected(this.value)">
+                    <option value="user">📷 Front Camera</option>
+                    <option value="environment" selected>📷 Rear Main Camera (1x)</option>
+                </select>
+                <button id="camera-toggle" class="btn" onclick="switchCameraQuick()" style="min-width: 50px; padding: 10px 14px;" title="Flip Camera">
+                    🔄
+                </button>
+            </div>
+
+            <!-- Zoom Control Slider (supported devices) -->
+            <div id="zoom-control-container" class="slider-container" style="display: none;">
+                <span class="slider-label">🔍 Zoom: <strong id="zoom-val-text">1.0x</strong></span>
+                <input type="range" id="zoom-slider" class="zoom-slider" min="1" max="5" step="0.1" value="1" oninput="onZoomSliderChanged(this.value)">
+            </div>
+
+            <!-- Quick Action Grid -->
+            <div class="btn-grid">
+                <button id="torch-toggle" class="btn btn-warning" onclick="toggleTorch()">
+                    🔦 Flashlight
+                </button>
+                <button id="mirror-toggle" class="btn" onclick="toggleMirror()">
+                    🪞 Flip / Mirror
+                </button>
+                <button id="stealth-toggle" class="btn btn-stealth" onclick="toggleStealthMode()">
+                    🔋 OLED Stealth
+                </button>
+            </div>
+
+            <!-- Stream Quality & Resolution Selectors -->
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                <div>
+                    <label style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 600; display: block; margin-bottom: 4px;">Resolution</label>
+                    <select id="resolution-selector" class="control-select">
+                        <option value="720">720p (Fast 60 FPS)</option>
+                        <option value="1080" selected>1080p (Studio Full HD)</option>
+                        <option value="2160">4K (Ultra HD)</option>
+                        <option value="480">480p (Eco Data)</option>
+                    </select>
+                </div>
+                <div>
+                    <label style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 600; display: block; margin-bottom: 4px;">Target FPS</label>
+                    <select id="fps-selector" class="control-select">
+                        <option value="60" selected>60 FPS (Ultra Smooth)</option>
+                        <option value="30">30 FPS (Standard)</option>
+                    </select>
+                </div>
+            </div>
+
+            <div style="text-align: center; margin-top: 4px;">
+                <span style="font-size: 12px; color: var(--text-muted);">
+                    💻 Control this camera from your PC at: <strong style="color: var(--accent-cyan);">/dashboard</strong>
+                </span>
+            </div>
+        </div>
     </div>
 
+    <!-- Socket.IO & Helpers -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/nosleep.js@0.12.1/dist/NoSleep.min.js"></script>
     <script>
-        // Force pure WebSocket to eliminate HTTP polling delays
+        // High-performance WebSocket pipeline
         const socket = io({
             transports: ['websocket'],
             upgrade: false,
-            reconnectionAttempts: 10,
+            reconnectionAttempts: 15,
             timeout: 10000
         });
-        
-        const statusEl = document.getElementById('connection-status');
-        const frameCounterEl = document.querySelector('.frame-counter');
+
+        // UI elements
+        const statusBadge = document.getElementById('connection-status');
+        const statusText = document.getElementById('status-text');
+        const fpsVal = document.getElementById('fps-val');
+        const pingVal = document.getElementById('ping-val');
+        const batteryPill = document.getElementById('battery-pill');
+        const batteryVal = document.getElementById('battery-val');
         const errorEl = document.getElementById('error-message');
         const errorTextEl = document.getElementById('error-text');
         const retryButton = document.getElementById('retry-button');
         const videoPreview = document.getElementById('video-preview');
-        
+        const startBtn = document.getElementById('start-btn');
+        const controlPanel = document.getElementById('control-panel');
+        const cameraDeviceSelect = document.getElementById('camera-device-select');
+        const zoomControlContainer = document.getElementById('zoom-control-container');
+        const zoomSlider = document.getElementById('zoom-slider');
+        const zoomValText = document.getElementById('zoom-val-text');
+        const hudLens = document.getElementById('hud-lens');
+        const hudRes = document.getElementById('hud-res');
+        const stealthOverlay = document.getElementById('stealth-overlay');
+        const stealthClock = document.getElementById('stealth-clock');
+
+        // Streaming state
         let frameCount = 0;
         let localStream = null;
         let canvas = null;
         let ctx = null;
         let isStreaming = false;
         let lastFrameTime = 0;
-        let targetFps = 60; // 60 FPS target
-        let frameInterval = 1000 / 60; // ~16.6ms
+        let targetFps = 60;
+        let frameInterval = 1000 / 60;
         let fpsCounter = 0;
         let lastFpsTime = performance.now();
         let currentFps = 0;
-        let droppedFrames = 0;
-
-        // Network quality monitoring & low-latency JPEG compression
-        let currentPing = 0;
-        let pingHistory = [];
-        let currentQuality = 0.78; // Sweet spot: crisp 1080p without compression/network latency
-        let resolutionLabel = '1080p';
-        let packetLossRate = 0;
-        let acknowledgedFrames = 0;
-        let totalFramesSent = 0;
         let isSendingFrame = false;
 
-        // Client-side latency tracking
-        let captureTimestamp = 0;
-        let transmitTimestamp = 0;
-        let endToEndLatency = 0;
-
-        let noSleep = null;
-        try {
-            if (typeof NoSleep !== 'undefined') {
-                noSleep = new NoSleep();
-            }
-        } catch (e) {
-            console.warn('NoSleep init skipped:', e);
-        }
-        let silentAudio = null;
-
-        // Camera controls
-        let currentFacingMode = 'user'; // 'user' = front, 'environment' = rear
-        let currentResolution = 720; // Default: Fast 720p 60 FPS for zero-lag real-time responsiveness
+        // Compression & Network state
+        let currentQuality = 0.65; // Sweet spot: crisp 1080p, ultra-fast 60 FPS, no Safari CPU throttle
+        let currentPing = 0;
+        let pingHistory = [];
+        let currentResolution = 1080;
+        let currentFacingMode = 'environment'; // Rear by default for webcam quality
+        let selectedDeviceId = null;
         let torchEnabled = false;
         let isMirrored = false;
-        let imageCapture = null;
-        
-        socket.on('connect', () => {
-            console.log('Socket connected successfully via WebSocket');
-            statusEl.textContent = 'Connected to Server (WebSocket High-Speed)';
-            statusEl.className = 'status connected';
-        });
+        let currentZoom = 1.0;
+        let maxZoom = 1.0;
+        let minZoom = 1.0;
+        let isStealthMode = false;
+        let videoTrack = null;
 
-        socket.on('connect_error', (err) => {
-            console.error('Socket connect error:', err);
-            statusEl.textContent = 'Connecting...';
-            statusEl.className = 'status disconnected';
-        });
-        
-        socket.on('disconnect', () => {
-            statusEl.textContent = 'Disconnected';
-            statusEl.className = 'status disconnected';
-        });
+        // Keep-alive helpers
+        let noSleep = null;
+        try { if (typeof NoSleep !== 'undefined') noSleep = new NoSleep(); } catch(e){}
+        let silentAudio = null;
+        let wakeLock = null;
 
-        socket.on('ping_response', (data) => {
-            const rtt = performance.now() - data.timestamp;
-            pingHistory.push(rtt);
-            if (pingHistory.length > 10) {
-                pingHistory.shift();
+        // Clock updater for stealth screen
+        setInterval(() => {
+            if (isStealthMode) {
+                const now = new Date();
+                stealthClock.textContent = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
             }
-            currentPing = pingHistory.reduce((a, b) => a + b) / pingHistory.length;
-            updateNetworkStatus();
+        }, 1000);
+
+        // Socket Events
+        socket.on('connect', () => {
+            statusBadge.className = 'status-badge';
+            statusText.textContent = 'Connected (High-Speed)';
+            measurePing();
+            broadcastState();
+        });
+
+        socket.on('disconnect', () => {
+            statusBadge.className = 'status-badge disconnected';
+            statusText.textContent = 'Disconnected';
+        });
+
+        socket.on('connect_error', () => {
+            statusBadge.className = 'status-badge connecting';
+            statusText.textContent = 'Reconnecting...';
         });
 
         socket.on('frame_ack', () => {
             isSendingFrame = false;
-            acknowledgedFrames++;
-            if (totalFramesSent > 0) {
-                packetLossRate = 1 - (acknowledgedFrames / totalFramesSent);
-            }
         });
 
-        socket.on('telemetry', (data) => {
-            const telemetryInfo = ` | Server FPS: ${data.fps} | BW: ${data.bandwidth.toFixed(1)} Mbps`;
-            frameCounterEl.textContent = `Frames: ${frameCount} | FPS: ${currentFps} | Dropped: ${droppedFrames} | Ping: ${Math.round(currentPing)}ms${telemetryInfo}`;
+        socket.on('ping_response', (data) => {
+            const rtt = Math.round(performance.now() - data.timestamp);
+            pingHistory.push(rtt);
+            if (pingHistory.length > 5) pingHistory.shift();
+            currentPing = Math.round(pingHistory.reduce((a, b) => a + b) / pingHistory.length);
+            pingVal.textContent = currentPing;
         });
-        
-        function showError(message) {
-            errorTextEl.textContent = message;
-            errorEl.style.display = 'block';
-        }
-        
-        function hideError() {
-            errorEl.style.display = 'none';
-        }
-        
-        function updateFrameCounter() {
-            frameCounterEl.textContent = `Frames: ${frameCount} | FPS: ${currentFps} | Dropped: ${droppedFrames} | Ping: ${Math.round(currentPing)}ms`;
-        }
 
-        function updateNetworkStatus() {
-            if (currentPing < 40) {
-                currentQuality = 0.82;
-            } else if (currentPing < 80) {
-                currentQuality = 0.78;
-            } else if (currentPing < 150) {
-                currentQuality = 0.70;
-            } else {
-                currentQuality = 0.62;
+        // Remote Commands from Laptop Dashboard
+        socket.on('remote_command', async (cmd) => {
+            console.log('Received remote command from Laptop:', cmd);
+            if (cmd.action === 'switch_camera') {
+                await switchCameraQuick();
+            } else if (cmd.action === 'select_device' && cmd.deviceId) {
+                await selectCameraDevice(cmd.deviceId);
+            } else if (cmd.action === 'toggle_torch') {
+                await toggleTorch();
+            } else if (cmd.action === 'toggle_mirror') {
+                toggleMirror();
+            } else if (cmd.action === 'set_zoom' && cmd.value) {
+                await applyZoom(parseFloat(cmd.value));
+            } else if (cmd.action === 'set_resolution' && cmd.value) {
+                currentResolution = parseInt(cmd.value);
+                document.getElementById('resolution-selector').value = currentResolution;
+                await restartCamera();
+            } else if (cmd.action === 'toggle_stealth') {
+                toggleStealthMode();
             }
-        }
+            broadcastState();
+        });
 
         function measurePing() {
-            if (!isStreaming) return;
-            socket.emit('ping', { timestamp: performance.now() });
+            if (socket.connected) {
+                socket.emit('ping', { timestamp: performance.now() });
+            }
+        }
+        setInterval(measurePing, 3000);
+
+        // Battery Telemetry
+        if ('getBattery' in navigator) {
+            navigator.getBattery().then(battery => {
+                function updateBatteryInfo() {
+                    const level = Math.round(battery.level * 100);
+                    batteryPill.style.display = 'flex';
+                    batteryVal.textContent = `${level}%${battery.charging ? ' ⚡' : ''}`;
+                    socket.emit('battery_telemetry', {
+                        level: level,
+                        charging: battery.charging
+                    });
+                }
+                updateBatteryInfo();
+                battery.addEventListener('levelchange', updateBatteryInfo);
+                battery.addEventListener('chargingchange', updateBatteryInfo);
+            }).catch(e => console.log('Battery API unavailable:', e));
         }
 
-        setInterval(measurePing, 4000);
+        // Screen WakeLock API
+        async function requestWakeLock() {
+            if ('wakeLock' in navigator) {
+                try {
+                    wakeLock = await navigator.wakeLock.request('screen');
+                } catch(e) {}
+            }
+        }
 
         function playSilentAudio() {
             try {
@@ -211,60 +294,46 @@
                     silentAudio.loop = true;
                     silentAudio.src = 'data:audio/wav;base64,UklGRjIAAABXQVZFZm10IBIAAAABAAEAQB8AAEAfAAABAAgAAABmYWN0BAAAAAAAAABkYXRhAAAAAA==';
                     silentAudio.volume = 0;
-                    silentAudio.play().catch(e => console.log('Silent audio play failed:', e));
+                    silentAudio.play().catch(e => {});
                 }
             } catch (e) {}
         }
 
-        function stopSilentAudio() {
-            if (silentAudio) {
-                silentAudio.pause();
-                silentAudio = null;
+        // Camera Enumeration (Multi-lens)
+        async function populateCameraDevices() {
+            if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return;
+            try {
+                const devices = await navigator.mediaDevices.enumerateDevices();
+                const videoInputs = devices.filter(d => d.kind === 'videoinput');
+                
+                if (videoInputs.length > 0) {
+                    cameraDeviceSelect.innerHTML = '';
+                    videoInputs.forEach((device, index) => {
+                        const opt = document.createElement('option');
+                        opt.value = device.deviceId;
+                        let label = device.label || `Camera ${index + 1}`;
+                        if (label.toLowerCase().includes('front')) label = '📷 Front Camera';
+                        else if (label.toLowerCase().includes('ultra') || label.toLowerCase().includes('wide')) label = `📷 ${label}`;
+                        else if (label.toLowerCase().includes('back')) label = `📷 Rear (${index})`;
+                        opt.textContent = label;
+                        if (device.deviceId === selectedDeviceId) opt.selected = true;
+                        cameraDeviceSelect.appendChild(opt);
+                    });
+                }
+            } catch (e) {
+                console.warn('Device enumeration error:', e);
             }
         }
 
-        function stopStreaming() {
-            isStreaming = false;
-            if (noSleep) noSleep.disable();
-            stopSilentAudio();
-            if (localStream) {
-                localStream.getTracks().forEach(track => track.stop());
-                localStream = null;
-            }
-        }
-        
-        function debugLog(msg) {
-            console.log(msg);
-            const d = document.getElementById('debug-log');
-            if (d) {
-                d.style.display = 'block';
-                d.textContent = msg;
-            }
-        }
-
+        // Camera Initialization
         async function startCamera() {
-            debugLog('Requesting camera permissions...');
-            const startBtn = document.getElementById('start-btn');
-            if (startBtn) {
-                startBtn.textContent = 'Requesting Camera Access...';
-                startBtn.style.background = '#007bff';
-            }
             hideError();
+            startBtn.textContent = 'Starting Camera...';
+            startBtn.disabled = true;
 
             try {
                 if (!window.isSecureContext) {
-                    throw new Error(
-                        '⚠️ Camera access requires a secure connection!\n\n' +
-                        'You opened this page over HTTP, but iOS requires HTTPS for camera access.\n\n' +
-                        '✅ Fix: Use the HTTPS link shown in the terminal.'
-                    );
-                }
-
-                if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-                    throw new Error(
-                        '⚠️ Camera API not available!\n\n' +
-                        'Your browser does not support camera access.'
-                    );
+                    throw new Error('Camera access requires HTTPS or localhost! Use the HTTPS link shown in console.');
                 }
 
                 const resolutions = {
@@ -274,22 +343,34 @@
                     2160: { width: 3840, height: 2160 }
                 };
                 const res = resolutions[currentResolution] || { width: 1920, height: 1080 };
-                debugLog(`Requesting ${res.width}x${res.height} @ ${targetFps} FPS...`);
+                
+                // Determine orientation to prevent constraint failure in portrait
+                const isPortrait = window.innerHeight > window.innerWidth;
+                const idealW = isPortrait ? res.height : res.width;
+                const idealH = isPortrait ? res.width : res.height;
+
+                // Build flexible constraint set
+                const videoConstraints = {
+                    width: { ideal: idealW },
+                    height: { ideal: idealH },
+                    frameRate: { ideal: targetFps, max: 60 }
+                };
+
+                if (selectedDeviceId) {
+                    videoConstraints.deviceId = { exact: selectedDeviceId };
+                } else {
+                    videoConstraints.facingMode = { ideal: currentFacingMode };
+                }
 
                 let stream = null;
                 try {
-                    // Try high priority exact/ideal constraints first
                     stream = await navigator.mediaDevices.getUserMedia({
-                        video: {
-                            width: { ideal: res.width, min: 1280 },
-                            height: { ideal: res.height, min: 720 },
-                            frameRate: { ideal: targetFps, min: 30 },
-                            facingMode: currentFacingMode
-                        },
+                        video: videoConstraints,
                         audio: false
                     });
-                } catch (firstErr) {
-                    debugLog('Falling back to standard camera constraint...');
+                } catch (strictErr) {
+                    // Fallback to basic constraints if device constraint rejected
+                    console.warn('Strict constraints rejected, trying fallback:', strictErr);
                     stream = await navigator.mediaDevices.getUserMedia({
                         video: {
                             facingMode: currentFacingMode,
@@ -301,37 +382,20 @@
                 }
 
                 localStream = stream;
-                videoPreview.setAttribute('playsinline', '');
-                videoPreview.setAttribute('webkit-playsinline', '');
-                videoPreview.muted = true;
+                videoTrack = localStream.getVideoTracks()[0];
                 videoPreview.srcObject = localStream;
+                await videoPreview.play();
 
-                try {
-                    await videoPreview.play();
-                } catch (playErr) {
-                    console.warn('Autoplay warning:', playErr);
-                }
+                // Setup Canvas matching native feed dimensions 1:1
+                const settings = videoTrack.getSettings ? videoTrack.getSettings() : {};
+                const streamW = settings.width || videoPreview.videoWidth || idealW;
+                const streamH = settings.height || videoPreview.videoHeight || idealH;
 
-                const videoTrack = localStream.getVideoTracks()[0];
-                const actualSettings = videoTrack.getSettings ? videoTrack.getSettings() : {};
-                const actualWidth = actualSettings.width || videoPreview.videoWidth || res.width;
-                const actualHeight = actualSettings.height || videoPreview.videoHeight || res.height;
-                const actualFps = actualSettings.frameRate || targetFps;
-                debugLog(`Active: ${actualWidth}x${actualHeight} @ ~${Math.round(actualFps)} FPS (Quality: ${Math.round(currentQuality*100)}%)`);
-
-                if ('ImageCapture' in window) {
-                    try {
-                        imageCapture = new ImageCapture(videoTrack);
-                    } catch (e) {}
-                }
-
-                // Match canvas 1:1 with actual camera stream to eliminate blur & scaling distortion
                 canvas = document.createElement('canvas');
-                canvas.width = actualWidth;
-                canvas.height = actualHeight;
+                canvas.width = streamW;
+                canvas.height = streamH;
                 ctx = canvas.getContext('2d', { alpha: false, desynchronized: true });
 
-                // Synchronize canvas size dynamically when video dimensions resolve
                 videoPreview.onloadedmetadata = () => {
                     if (videoPreview.videoWidth && videoPreview.videoHeight) {
                         canvas.width = videoPreview.videoWidth;
@@ -339,114 +403,57 @@
                     }
                 };
 
-                isStreaming = true;
-                hideError();
-
-                if (startBtn) startBtn.style.display = 'none';
-                document.getElementById('control-panel').style.display = 'block';
-
-                updateCameraToggleButton();
-                updateTorchButtonState();
-
-                if (noSleep) {
-                    try { noSleep.enable(); } catch (e) {}
+                // Inspect zoom capability
+                const capabilities = videoTrack.getCapabilities ? videoTrack.getCapabilities() : {};
+                if (capabilities.zoom) {
+                    minZoom = capabilities.zoom.min || 1.0;
+                    maxZoom = capabilities.zoom.max || 5.0;
+                    zoomSlider.min = minZoom;
+                    zoomSlider.max = maxZoom;
+                    zoomSlider.step = capabilities.zoom.step || 0.1;
+                    zoomSlider.value = settings.zoom || 1.0;
+                    currentZoom = parseFloat(zoomSlider.value);
+                    zoomValText.textContent = `${currentZoom.toFixed(1)}x`;
+                    zoomControlContainer.style.display = 'flex';
+                } else {
+                    zoomControlContainer.style.display = 'none';
                 }
-                playSilentAudio();
 
+                // Update HUD
+                hudLens.textContent = currentFacingMode === 'user' ? '📷 Front' : '📷 Rear';
+                hudRes.textContent = `${streamW}x${streamH}`;
+
+                isStreaming = true;
+                startBtn.style.display = 'none';
+                controlPanel.style.display = 'flex';
+
+                // Keep device awake
+                if (noSleep) noSleep.enable();
+                playSilentAudio();
+                requestWakeLock();
+
+                // Enumerate and populate all camera choices
+                await populateCameraDevices();
+
+                // Start Frame Capture Loop
                 extractFrames();
 
-            } catch (error) {
-                console.error('Camera access error:', error);
-                
-                if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
-                    statusEl.textContent = 'Camera permission denied. Please allow camera access and reload.';
-                    statusEl.className = 'status error';
-                } else if (error.name === 'NotFoundError') {
-                    statusEl.textContent = 'No camera found on this device.';
-                    statusEl.className = 'status error';
-                } else if (error.name === 'NotReadableError') {
-                    statusEl.textContent = 'Camera is already in use by another application.';
-                    statusEl.className = 'status error';
-                } else {
-                    statusEl.textContent = `Camera error: ${error.message || error}`;
-                    statusEl.className = 'status error';
-                }
-                
-                if (startBtn) {
-                    startBtn.style.display = 'block';
-                    startBtn.textContent = '❌ Tap to Retry Camera';
-                    startBtn.style.background = '#dc3545';
-                }
-                showError(`Camera Error: ${error.name || ''} - ${error.message || error}`);
+                broadcastState();
+
+            } catch (err) {
+                console.error('Camera startup error:', err);
+                startBtn.style.display = 'block';
+                startBtn.textContent = '❌ Tap to Retry Camera';
+                startBtn.disabled = false;
+                showError(err.message || 'Unable to access camera.');
             }
         }
 
-        async function switchCamera() {
-            // Stop current stream
-            if (localStream) {
-                localStream.getTracks().forEach(track => track.stop());
-                localStream = null;
-            }
-
-            // Toggle facing mode
-            currentFacingMode = currentFacingMode === 'user' ? 'environment' : 'user';
-
-            // Restart camera with new facing mode
-            await startCamera();
-        }
-
-        function updateCameraToggleButton() {
-            const button = document.getElementById('camera-toggle');
-            button.textContent = currentFacingMode === 'user' ? '📷 Switch to Rear' : '📷 Switch to Front';
-        }
-
-        function updateTorchButtonState() {
-            const button = document.getElementById('torch-toggle');
-            // Torch only works on rear camera
-            button.disabled = currentFacingMode !== 'environment';
-            button.textContent = torchEnabled ? '🔦 Flashlight ON' : '🔦 Flashlight OFF';
-            button.style.background = torchEnabled ? '#FF5722' : '#FF9800';
-        }
-
-        async function toggleTorch() {
-            if (!imageCapture) {
-                showError('Torch not supported on this device');
-                return;
-            }
-
-            try {
-                torchEnabled = !torchEnabled;
-
-                // Try WebKit ImageCapture API first (iOS)
-                if (imageCapture.applyConstraints) {
-                    await imageCapture.applyConstraints({
-                        advanced: [{ torch: torchEnabled }]
-                    });
-                }
-                // Fallback to direct constraint
-                else if (localStream.getVideoTracks()[0].applyConstraints) {
-                    await localStream.getVideoTracks()[0].applyConstraints({
-                        advanced: [{ torch: torchEnabled }]
-                    });
-                } else {
-                    throw new Error('Torch API not supported');
-                }
-
-                updateTorchButtonState();
-            } catch (error) {
-                console.error('Torch toggle error:', error);
-                torchEnabled = !torchEnabled; // Revert
-                showError('Torch not supported on this device');
-                updateTorchButtonState();
-            }
-        }
-        
+        // Frame Capture Loop
         function extractFrames() {
-            if (!isStreaming || !localStream || !canvas || !ctx) {
-                return;
-            }
+            if (!isStreaming || !localStream || !canvas || !ctx) return;
 
-            function scheduleNextFrame() {
+            function scheduleNext() {
                 if (!isStreaming) return;
                 if ('requestVideoFrameCallback' in HTMLVideoElement.prototype) {
                     videoPreview.requestVideoFrameCallback(captureFrame);
@@ -455,41 +462,26 @@
                 }
             }
 
-            function captureFrame(currentTime) {
-                if (!isStreaming) {
-                    return;
-                }
+            function captureFrame(now) {
+                if (!isStreaming) return;
+                scheduleNext();
 
-                scheduleNextFrame();
+                const delta = now - lastFrameTime;
+                if (delta < frameInterval) return;
+                if (isSendingFrame) return; // Prevent queue buildup
 
-                // Calculate delta time for frame rate control
-                const delta = currentTime - lastFrameTime;
+                lastFrameTime = now - (delta % frameInterval);
 
-                // Skip frame if incoming faster than target FPS interval
-                if (delta < frameInterval) {
-                    return;
-                }
-
-                // If prior frame is still processing, skip this frame to prevent buffer lag
-                if (isSendingFrame) {
-                    return;
-                }
-
-                lastFrameTime = currentTime - (delta % frameInterval);
-
-                // Calculate FPS every second
+                // FPS telemetry
                 fpsCounter++;
-                if (currentTime - lastFpsTime >= 1000) {
+                if (now - lastFpsTime >= 1000) {
                     currentFps = fpsCounter;
                     fpsCounter = 0;
-                    lastFpsTime = currentTime;
-                    updateFrameCounter();
+                    lastFpsTime = now;
+                    fpsVal.textContent = currentFps;
                 }
 
-                // Capture timestamp for latency tracking
-                captureTimestamp = performance.now();
-
-                // Draw video frame to canvas (handle mirroring)
+                // Render video to canvas
                 ctx.save();
                 if (isMirrored) {
                     ctx.translate(canvas.width, 0);
@@ -500,121 +492,168 @@
 
                 isSendingFrame = true;
 
-                // Convert to JPEG blob with optimized quality for real-time speed
+                // Send optimized JPEG blob
                 canvas.toBlob((blob) => {
                     isSendingFrame = false;
-                    if (blob && isStreaming) {
-                        transmitTimestamp = performance.now();
+                    if (blob && isStreaming && socket.connected) {
                         socket.emit('video_frame', blob);
-                        totalFramesSent++;
                         frameCount++;
                     }
                 }, 'image/jpeg', currentQuality);
             }
 
-            scheduleNextFrame();
-        }
-        
-        // Initialize on page load
-        window.addEventListener('load', () => {
-            const isSecure = window.isSecureContext || window.location.protocol === 'https:' || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-            const infoMessage = document.getElementById('info-message');
-            if (!isSecure) {
-                infoMessage.style.display = 'block';
-            }
-        });
-        
-        const startBtn = document.getElementById('start-btn');
-        if (startBtn) {
-            startBtn.addEventListener('click', () => {
-                startCamera();
-            });
-            startBtn.addEventListener('touchstart', (e) => {
-                e.preventDefault();
-                startCamera();
-            }, { passive: false });
+            scheduleNext();
         }
 
-        retryButton.addEventListener('click', () => {
+        async function restartCamera() {
             if (localStream) {
-                // Stop existing stream
-                localStream.getTracks().forEach(track => track.stop());
-            }
-            startCamera();
-        });
-
-        // Camera toggle button
-        document.getElementById('camera-toggle').addEventListener('click', switchCamera);
-
-        // Torch toggle button
-        document.getElementById('torch-toggle').addEventListener('click', toggleTorch);
-
-        // Mirror toggle button
-        const mirrorBtn = document.getElementById('mirror-toggle');
-        if (mirrorBtn) {
-            mirrorBtn.addEventListener('click', () => {
-                isMirrored = !isMirrored;
-                mirrorBtn.style.background = isMirrored ? '#E91E63' : '#9C27B0';
-                mirrorBtn.textContent = isMirrored ? '🪞 Mirrored ON' : '🪞 Flip / Mirror';
-                // Also mirror phone preview for consistency
-                videoPreview.style.transform = isMirrored ? 'scaleX(-1)' : 'none';
-            });
-        }
-
-        // FPS selector (30 FPS / 60 FPS)
-        const fpsSelector = document.getElementById('fps-selector');
-        if (fpsSelector) {
-            fpsSelector.addEventListener('change', async (e) => {
-                targetFps = parseInt(e.target.value);
-                frameInterval = 1000 / targetFps;
-                if (localStream) {
-                    localStream.getTracks().forEach(track => track.stop());
-                    localStream = null;
-                }
-                await startCamera();
-            });
-        }
-
-        // Resolution selector
-        document.getElementById('resolution-selector').addEventListener('change', async (e) => {
-            currentResolution = parseInt(e.target.value);
-
-            // Stop current stream
-            if (localStream) {
-                localStream.getTracks().forEach(track => track.stop());
+                localStream.getTracks().forEach(t => t.stop());
                 localStream = null;
             }
-
-            // Restart camera with new resolution
             await startCamera();
-        });
+        }
 
-        // Latency preset mode selector
-        const latencySelector = document.getElementById('latency-mode');
-        if (latencySelector) {
-            latencySelector.addEventListener('change', (e) => {
-                const mode = e.target.value;
-                if (mode === 'zero-delay') {
-                    currentQuality = 0.68;
-                } else if (mode === 'balanced') {
-                    currentQuality = 0.78;
-                } else if (mode === 'high-quality') {
-                    currentQuality = 0.88;
-                }
-                debugLog(`Latency mode: ${mode} (JPEG quality: ${Math.round(currentQuality*100)}%)`);
+        async function switchCameraQuick() {
+            selectedDeviceId = null;
+            currentFacingMode = currentFacingMode === 'user' ? 'environment' : 'user';
+            await restartCamera();
+        }
+
+        async function onCameraDeviceSelected(devId) {
+            await selectCameraDevice(devId);
+        }
+
+        async function selectCameraDevice(devId) {
+            selectedDeviceId = devId;
+            await restartCamera();
+        }
+
+        async function applyZoom(val) {
+            if (!videoTrack) return;
+            try {
+                await videoTrack.applyConstraints({ advanced: [{ zoom: val }] });
+                currentZoom = val;
+                zoomSlider.value = val;
+                zoomValText.textContent = `${val.toFixed(1)}x`;
+            } catch(e) {
+                console.warn('Zoom constraint error:', e);
+            }
+        }
+
+        function onZoomSliderChanged(val) {
+            applyZoom(parseFloat(val));
+            broadcastState();
+        }
+
+        // Pinch-to-zoom support on viewfinder
+        let initialPinchDistance = null;
+        let initialPinchZoom = 1.0;
+
+        videoPreview.addEventListener('touchstart', (e) => {
+            if (e.touches.length === 2 && maxZoom > 1.0) {
+                initialPinchDistance = Math.hypot(
+                    e.touches[0].pageX - e.touches[1].pageX,
+                    e.touches[0].pageY - e.touches[1].pageY
+                );
+                initialPinchZoom = currentZoom;
+            }
+        }, { passive: true });
+
+        videoPreview.addEventListener('touchmove', (e) => {
+            if (e.touches.length === 2 && initialPinchDistance && maxZoom > 1.0) {
+                const currentDist = Math.hypot(
+                    e.touches[0].pageX - e.touches[1].pageX,
+                    e.touches[0].pageY - e.touches[1].pageY
+                );
+                const scale = currentDist / initialPinchDistance;
+                let targetZoom = Math.min(maxZoom, Math.max(minZoom, initialPinchZoom * scale));
+                applyZoom(targetZoom);
+            }
+        }, { passive: true });
+
+        videoPreview.addEventListener('touchend', () => {
+            initialPinchDistance = null;
+        }, { passive: true });
+
+        // Torch Toggle
+        async function toggleTorch() {
+            if (!videoTrack) return;
+            try {
+                torchEnabled = !torchEnabled;
+                await videoTrack.applyConstraints({ advanced: [{ torch: torchEnabled }] });
+                const btn = document.getElementById('torch-toggle');
+                btn.textContent = torchEnabled ? '🔦 Torch ON' : '🔦 Flashlight';
+                btn.style.background = torchEnabled ? '#ea580c' : '';
+                broadcastState();
+            } catch (e) {
+                torchEnabled = !torchEnabled;
+                showError('Torch not supported on this camera/browser.');
+            }
+        }
+
+        // Mirror Toggle
+        function toggleMirror() {
+            isMirrored = !isMirrored;
+            videoPreview.style.transform = isMirrored ? 'scaleX(-1)' : 'none';
+            const btn = document.getElementById('mirror-toggle');
+            btn.textContent = isMirrored ? '🪞 Mirrored' : '🪞 Flip / Mirror';
+            btn.style.borderColor = isMirrored ? 'var(--accent-purple)' : '';
+            broadcastState();
+        }
+
+        // OLED Stealth Mode
+        function toggleStealthMode() {
+            isStealthMode = !isStealthMode;
+            if (isStealthMode) {
+                stealthOverlay.classList.add('active');
+            } else {
+                stealthOverlay.classList.remove('active');
+            }
+            broadcastState();
+        }
+
+        // Broadcast State to Server for Laptop Dashboard
+        function broadcastState() {
+            socket.emit('camera_state_update', {
+                facingMode: currentFacingMode,
+                deviceId: selectedDeviceId,
+                torch: torchEnabled,
+                isMirrored: isMirrored,
+                resolution: currentResolution,
+                zoom: currentZoom,
+                maxZoom: maxZoom,
+                minZoom: minZoom,
+                stealth: isStealthMode,
+                fps: currentFps
             });
         }
-        
-        // Handle page visibility change (pause when hidden to save battery)
+
+        // UI Event Listeners
+        document.getElementById('resolution-selector').addEventListener('change', async (e) => {
+            currentResolution = parseInt(e.target.value);
+            await restartCamera();
+        });
+
+        document.getElementById('fps-selector').addEventListener('change', (e) => {
+            targetFps = parseInt(e.target.value);
+            frameInterval = 1000 / targetFps;
+        });
+
+        retryButton.addEventListener('click', restartCamera);
+
+        function showError(msg) {
+            errorTextEl.textContent = msg;
+            errorEl.style.display = 'block';
+        }
+
+        function hideError() {
+            errorEl.style.display = 'none';
+        }
+
         document.addEventListener('visibilitychange', () => {
-            if (document.hidden) {
-                noSleep.disable();
-                stopSilentAudio();
-            } else {
-                if (isStreaming) {
-                    noSleep.enable();
-                    playSilentAudio();
-                }
+            if (!document.hidden && isStreaming) {
+                requestWakeLock();
+                playSilentAudio();
             }
         });
     </script>

@@ -4,6 +4,19 @@ All notable changes to iOS WebCam Bridge are documented here.
 
 ---
 
+## [v1.2.0] — 2026-10-12
+
+### Added
+- **Laptop Studio Dashboard (`/dashboard`)**: Dedicated desktop browser control deck featuring real-time MJPEG preview monitor, battery telemetry, remote camera controls, snapshot button, and USB cable mode setup.
+- **Bi-Directional Remote Controls**: Laptop operator can switch cameras, toggle the torch, adjust zoom, toggle mirror, and trigger phone stealth mode without touching the phone.
+- **Smart Aspect-Ratio Framing (Anti-Distortion Engine)**: Intelligent 16:9 center-crop, ambient broadcast-grade blurred pillarbox (`cv2.GaussianBlur`), or stretch mode to eliminate distortion when phones stream in portrait mode.
+- **Multi-Camera Lens Picker**: Automatic device enumeration supporting Ultra-wide (0.5x), Main (1x), and Telephoto lenses.
+- **Pinch-to-Zoom & Zoom Slider**: Native hardware camera zoom controls with touch-gesture support.
+- **OLED Stealth / Battery Saver Mode**: Renders a pitch-black screen with dim status clock to prevent screen burn-in and thermal throttling during long calls while streaming at 60 FPS.
+- **Modern Glassmorphism UI**: Complete visual redesign of the mobile HUD and desktop dashboard with smooth animations and dark theme.
+
+---
+
 ## [v1.1.0] — 2026-09-30
 
 ### Added

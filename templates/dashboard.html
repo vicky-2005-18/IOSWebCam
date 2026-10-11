@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>💻 iOS WebCam Bridge - Studio Dashboard</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="dashboard-container">
+        <!-- Dashboard Top Header -->
+        <header class="dashboard-header">
+            <div class="brand-title">
+                <span style="font-size: 26px;">📹</span>
+                <div>
+                    <h1>Studio Control Deck</h1>
+                    <span style="font-size: 12px; color: var(--text-muted);">Virtual Webcam Host & Remote Management</span>
+                </div>
+            </div>
+
+            <div style="display: flex; align-items: center; gap: 12px;">
+                <div id="conn-badge" class="status-badge disconnected">
+                    <span class="status-dot"></span>
+                    <span id="conn-text">Waiting for Phone...</span>
+                </div>
+
+                <button class="btn" onclick="openUsbGuide()" style="padding: 8px 14px; font-size: 13px;">
+                    ⚡ USB Cable Mode
+                </button>
+            </div>
+        </header>
+
+        <!-- Main Workspace Grid -->
+        <div class="dashboard-grid">
+            <!-- Left Column: Live Studio Monitor -->
+            <div class="studio-monitor">
+                <div class="monitor-screen-wrapper" id="monitor-wrapper">
+                    <!-- Live MJPEG Stream -->
+                    <img id="dashboard-preview-img" src="/preview_feed" alt="Live Camera Preview" onerror="handlePreviewError()" onload="handlePreviewLoad()">
+                    
+                    <div id="monitor-placeholder" class="monitor-placeholder" style="display: none; position: absolute;">
+                        <span style="font-size: 36px;">📱</span>
+                        <span>Scan the QR code or open URL on your phone to start stream</span>
+                    </div>
+
+                    <!-- Watermark / Info Badge -->
+                    <div style="position: absolute; top: 14px; left: 16px; display: flex; gap: 8px;">
+                        <span class="hud-pill" id="monitor-fps-pill">0 FPS</span>
+                        <span class="hud-pill" id="monitor-bw-pill">0.0 Mbps</span>
+                    </div>
+
+                    <div style="position: absolute; top: 14px; right: 16px;">
+                        <button class="btn btn-stealth" onclick="toggleFullscreen()" style="padding: 6px 10px; font-size: 12px;">
+                            ⛶ Fullscreen
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Monitor Bottom Toolbar -->
+                <div class="monitor-bar">
+                    <!-- Smart Aspect-Ratio Framing Selector -->
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <span style="font-size: 12px; font-weight: 600; color: var(--text-muted);">ASPECT FRAMING:</span>
+                        <div class="framing-selector">
+                            <button id="btn-framing-crop" class="framing-btn active" onclick="setFramingMode('crop')" title="Center-crop portrait/mobile frame to fill 16:9 webcam">
+                                ✂️ Smart 16:9 Crop
+                            </button>
+                            <button id="btn-framing-fit" class="framing-btn" onclick="setFramingMode('fit')" title="Show entire mobile frame with broadcast ambient blur">
+                                🪟 Fit with Blur
+                            </button>
+                            <button id="btn-framing-stretch" class="framing-btn" onclick="setFramingMode('stretch')" title="Direct stretch to virtual camera">
+                                ↔ Stretch
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Snapshot button -->
+                    <button class="btn btn-primary" onclick="captureSnapshot()" style="padding: 8px 16px; font-size: 13px;">
+                        📸 Snapshot
+                    </button>
+                </div>
+            </div>
+
+            <!-- Right Column: Control Deck & Telemetry -->
+            <div class="control-deck">
+                
+                <!-- Live Telemetry Card -->
+                <div class="glass-panel deck-section">
+                    <div class="section-header">
+                        <span>Live Telemetry</span>
+                        <span id="host-vcam-status" style="color: var(--accent-green); font-size: 11px;">🟢 Virtual Cam Active</span>
+                    </div>
+
+                    <div class="stat-grid">
+                        <div class="stat-card">
+                            <span class="stat-label">Virtual Cam FPS</span>
+                            <span class="stat-value" id="stat-fps">0</span>
+                        </div>
+                        <div class="stat-card">
+                            <span class="stat-label">Bandwidth</span>
+                            <span class="stat-value" id="stat-bandwidth">0.0 <small style="font-size: 12px;">Mbps</small></span>
+                        </div>
+                        <div class="stat-card">
+                            <span class="stat-label">Phone Battery</span>
+                            <span class="stat-value" id="stat-battery">--%</span>
+                        </div>
+                        <div class="stat-card">
+                            <span class="stat-label">Total Frames</span>
+                            <span class="stat-value" id="stat-frames">0</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Remote Camera Controls -->
+                <div class="glass-panel deck-section">
+                    <div class="section-header">
+                        <span>Remote Camera Controls</span>
+                        <span style="font-size: 11px; color: var(--accent-cyan);">Syncs instantly</span>
+                    </div>
+
+                    <!-- Switch Camera & Torch -->
+                    <div class="deck-row">
+                        <button class="btn" style="flex: 1;" onclick="sendRemoteCmd('switch_camera')">
+                            🔄 Flip Camera
+                        </button>
+                        <button id="remote-torch-btn" class="btn btn-warning" style="flex: 1;" onclick="sendRemoteCmd('toggle_torch')">
+                            🔦 Torch
+                        </button>
+                    </div>
+
+                    <div class="deck-row">
+                        <button id="remote-mirror-btn" class="btn" style="flex: 1;" onclick="sendRemoteCmd('toggle_mirror')">
+                            🪞 Flip / Mirror
+                        </button>
+                        <button id="remote-stealth-btn" class="btn btn-stealth" style="flex: 1;" onclick="sendRemoteCmd('toggle_stealth')">
+                            🔋 Phone Stealth
+                        </button>
+                    </div>
+
+                    <!-- Remote Zoom Slider -->
+                    <div style="margin-top: 14px;">
+                        <div style="display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 6px;">
+                            <span style="color: var(--text-secondary); font-weight: 600;">Hardware Zoom:</span>
+                            <strong id="remote-zoom-text" style="color: var(--accent-cyan);">1.0x</strong>
+                        </div>
+                        <input type="range" id="remote-zoom-slider" class="zoom-slider" min="1" max="5" step="0.1" value="1" oninput="onRemoteZoomChanged(this.value)">
+                    </div>
+
+                    <!-- Remote Resolution Change -->
+                    <div style="margin-top: 14px;">
+                        <label style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 600; display: block; margin-bottom: 4px;">Remote Resolution</label>
+                        <select id="remote-res-select" class="control-select" onchange="onRemoteResChanged(this.value)">
+                            <option value="720">720p (Ultra Fast 60 FPS)</option>
+                            <option value="1080" selected>1080p (Studio Full HD)</option>
+                            <option value="2160">4K (Ultra HD)</option>
+                            <option value="480">480p (Eco Data)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Quick Help / Link -->
+                <div class="glass-panel deck-section" style="font-size: 13px; color: var(--text-secondary);">
+                    <div style="font-weight: 600; color: #fff; margin-bottom: 4px;">💡 Using in Zoom / Teams / Meet</div>
+                    <div>Select <strong>"Unity Video Capture"</strong> or <strong>"OBS Virtual Camera"</strong> as your video input device in your meeting settings.</div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <!-- USB Cable Mode Guide Modal -->
+    <div id="usb-modal" class="modal-backdrop" onclick="closeUsbGuide(event)">
+        <div class="modal-card" onclick="event.stopPropagation()">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                <h3 style="font-size: 18px; font-weight: 700; color: #fff;">⚡ Zero-Lag USB Cable Mode</h3>
+                <button onclick="closeUsbGuide()" style="background: none; border: none; color: #94a3b8; font-size: 20px; cursor: pointer;">&times;</button>
+            </div>
+            <p style="font-size: 14px; color: #cbd5e1; line-height: 1.6; margin-bottom: 16px;">
+                Connect your phone directly using a USB charging cable for 0% packet loss and rock-solid 60 FPS without depending on Wi-Fi:
+            </p>
+            <div style="background: rgba(0,0,0,0.5); padding: 14px; border-radius: 8px; border: 1px solid var(--border-glass); font-family: monospace; font-size: 13px; color: #38bdf8; margin-bottom: 16px;">
+                # For iPhone (using Apple iTunes / usbmuxd):<br>
+                iproxy 5000 5000<br><br>
+                # For Android (using ADB):<br>
+                adb reverse tcp:5000 tcp:5000
+            </div>
+            <p style="font-size: 13px; color: #94a3b8;">
+                Once connected, navigate to <code style="color: #fff;">https://localhost:5000</code> in your phone's browser for maximum performance!
+            </p>
+            <div style="text-align: right; margin-top: 20px;">
+                <button class="btn btn-primary" onclick="closeUsbGuide()">Got it</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
+    <script>
+        const socket = io({
+            transports: ['websocket'],
+            upgrade: false
+        });
+
+        const connBadge = document.getElementById('conn-badge');
+        const connText = document.getElementById('conn-text');
+        const previewImg = document.getElementById('dashboard-preview-img');
+        const placeholder = document.getElementById('monitor-placeholder');
+        const statFps = document.getElementById('stat-fps');
+        const statBandwidth = document.getElementById('stat-bandwidth');
+        const statBattery = document.getElementById('stat-battery');
+        const statFrames = document.getElementById('stat-frames');
+        const monitorFpsPill = document.getElementById('monitor-fps-pill');
+        const monitorBwPill = document.getElementById('monitor-bw-pill');
+        const remoteZoomSlider = document.getElementById('remote-zoom-slider');
+        const remoteZoomText = document.getElementById('remote-zoom-text');
+        const remoteTorchBtn = document.getElementById('remote-torch-btn');
+        const remoteStealthBtn = document.getElementById('remote-stealth-btn');
+        const usbModal = document.getElementById('usb-modal');
+
+        let isPhoneConnected = false;
+
+        socket.on('connect', () => {
+            console.log('Connected to host socket');
+        });
+
+        // Telemetry Stream from app.py
+        socket.on('telemetry', (data) => {
+            statFps.textContent = data.fps;
+            monitorFpsPill.textContent = `${data.fps} FPS`;
+            
+            const bw = data.bandwidth.toFixed(1);
+            statBandwidth.innerHTML = `${bw} <small style="font-size: 12px;">Mbps</small>`;
+            monitorBwPill.textContent = `${bw} Mbps`;
+
+            statFrames.textContent = data.frame_count;
+
+            if (data.client_count > 0 && !isPhoneConnected) {
+                isPhoneConnected = true;
+                connBadge.className = 'status-badge';
+                connText.textContent = 'Phone Connected (Live)';
+                placeholder.style.display = 'none';
+            } else if (data.client_count === 0 && isPhoneConnected) {
+                isPhoneConnected = false;
+                connBadge.className = 'status-badge disconnected';
+                connText.textContent = 'Waiting for Phone...';
+            }
+
+            if (data.framing_mode) {
+                updateFramingButtons(data.framing_mode);
+            }
+        });
+
+        // Phone Camera State Updates
+        socket.on('camera_state', (state) => {
+            if (state.zoom !== undefined) {
+                remoteZoomSlider.value = state.zoom;
+                remoteZoomText.textContent = `${parseFloat(state.zoom).toFixed(1)}x`;
+            }
+            if (state.maxZoom !== undefined) {
+                remoteZoomSlider.max = state.maxZoom;
+            }
+            if (state.torch !== undefined) {
+                remoteTorchBtn.style.background = state.torch ? '#ea580c' : '';
+                remoteTorchBtn.textContent = state.torch ? '🔦 Torch ON' : '🔦 Torch';
+            }
+            if (state.stealth !== undefined) {
+                remoteStealthBtn.textContent = state.stealth ? '🔋 Stealth ON' : '🔋 Phone Stealth';
+                remoteStealthBtn.style.borderColor = state.stealth ? 'var(--accent-green)' : '';
+            }
+            if (state.resolution !== undefined) {
+                document.getElementById('remote-res-select').value = state.resolution;
+            }
+        });
+
+        // Phone Battery Updates
+        socket.on('battery_telemetry', (battery) => {
+            statBattery.textContent = `${battery.level}%${battery.charging ? ' ⚡' : ''}`;
+        });
+
+        socket.on('framing_mode_changed', (data) => {
+            updateFramingButtons(data.mode);
+        });
+
+        function sendRemoteCmd(action, value = null) {
+            socket.emit('remote_command', { action: action, value: value });
+        }
+
+        function onRemoteZoomChanged(val) {
+            remoteZoomText.textContent = `${parseFloat(val).toFixed(1)}x`;
+            sendRemoteCmd('set_zoom', val);
+        }
+
+        function onRemoteResChanged(val) {
+            sendRemoteCmd('set_resolution', val);
+        }
+
+        function setFramingMode(mode) {
+            socket.emit('set_framing_mode', { mode: mode });
+            updateFramingButtons(mode);
+        }
+
+        function updateFramingButtons(activeMode) {
+            ['crop', 'fit', 'stretch'].forEach(m => {
+                const btn = document.getElementById(`btn-framing-${m}`);
+                if (btn) {
+                    if (m === activeMode) btn.classList.add('active');
+                    else btn.classList.remove('active');
+                }
+            });
+        }
+
+        function handlePreviewError() {
+            placeholder.style.display = 'flex';
+        }
+
+        function handlePreviewLoad() {
+            placeholder.style.display = 'none';
+        }
+
+        function captureSnapshot() {
+            const canvas = document.createElement('canvas');
+            canvas.width = previewImg.naturalWidth || 1920;
+            canvas.height = previewImg.naturalHeight || 1080;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(previewImg, 0, 0, canvas.width, canvas.height);
+            
+            const link = document.createElement('a');
+            link.download = `webcam_snapshot_${Date.now()}.png`;
+            link.href = canvas.toDataURL('image/png');
+            link.click();
+        }
+
+        function toggleFullscreen() {
+            const wrapper = document.getElementById('monitor-wrapper');
+            if (!document.fullscreenElement) {
+                wrapper.requestFullscreen().catch(err => alert(err.message));
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        function openUsbGuide() {
+            usbModal.classList.add('active');
+        }
+
+        function closeUsbGuide(e) {
+            usbModal.classList.remove('active');
+        }
+    </script>
+</body>
+</html>

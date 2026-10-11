@@ -73,32 +73,46 @@ No manual setup needed — just run and scan the QR code.
 
 ---
 
-## 🎮 Phone Controls
+## 🎮 Phone Controls & Advanced Mobile Features
 
-| Button | Action |
+| Feature | Action |
 |---|---|
-| 📷 Switch Camera | Toggle front/back camera |
-| 🪞 Flip / Mirror | Mirror the image |
-| 🔦 Flashlight | Toggle torch (rear camera) |
-| 30 / 60 FPS | Change frame rate |
-| 480p / 720p / 1080p | Change resolution |
+| 📷 Multi-Lens Switcher | Select Ultra-Wide (0.5x), Main (1x), Telephoto, or Front camera |
+| 🔍 Pinch-to-Zoom & Slider | Hardware digital zoom adjustment directly on screen |
+| 🔋 OLED Stealth Mode | Dims screen completely to prevent phone overheating & battery drain |
+| 🔦 Flashlight / Torch | Toggle torch on rear camera |
+| 🪞 Flip / Mirror | Mirror the video feed |
+| ⚡ 60 FPS / 1080p Studio | Crisp Full HD output with zero distortion smart-framing |
+
+---
+
+## 💻 Laptop Studio Dashboard (`/dashboard`)
+
+Access your dedicated desktop control center in your browser at `http://localhost:5000/dashboard`:
+- **Live Preview Monitor**: Real-time low-latency stream preview right on your laptop screen.
+- **Bi-Directional Remote Control**: Flip camera, toggle torch, adjust zoom, and change resolution directly from your PC without touching the phone.
+- **Smart Aspect-Ratio Framing**: Switch between **Smart 16:9 Crop**, **Fit with Ambient Blur**, or **Stretch** modes.
+- **Phone Health Telemetry**: Live phone battery percentage, charging state, FPS, and bandwidth.
+- **📸 Snapshot Tool**: Save full-resolution stills instantly.
 
 ---
 
 ## 🖥️ Architecture
 
 ```
-📱 Phone (Browser)                    💻 PC (Windows)
-┌─────────────────┐                  ┌──────────────────────────┐
-│  HTML5 Camera   │  WebSocket JPEG  │  Flask-SocketIO Server   │
-│  MediaDevices   │ ───────────────► │  OpenCV frame processor  │
-│  getUserMedia() │                  │  PyVirtualCam output     │
-└─────────────────┘                  └────────────┬─────────────┘
-                                                  │
-                                     ┌────────────▼─────────────┐
-                                     │   Virtual Webcam Driver   │
-                                     │  (OBS / Unity Capture)   │
-                                     └──────────────────────────┘
+📱 Phone (Browser)                    💻 PC / Laptop Host
+┌───────────────────────┐            ┌──────────────────────────────────────────────┐
+│  HTML5 Camera Stream  │  WebSocket │  Flask-SocketIO Server                       │
+│  - Multi-lens picker  │ ──────────►│  - Smart Framing (16:9 crop / ambient blur)  │
+│  - Hardware zoom      │            │  - PyVirtualCam (1080p @ 60 FPS DirectShow)   │
+│  - OLED Stealth mode  │◄───────────│  - Studio Dashboard (/dashboard)             │
+│  - Low-lag binary blob│  Commands  │  - Low-latency preview feed (/preview_feed)  │
+└───────────────────────┘            └──────────────────────┬───────────────────────┘
+                                                            │
+                                             ┌──────────────▼──────────────┐
+                                             │    Virtual Webcam Driver    │
+                                             │    (Unity / OBS Capture)    │
+                                             └─────────────────────────────┘
 ```
 
 ---
@@ -108,11 +122,12 @@ No manual setup needed — just run and scan the QR code.
 | Layer | Technology |
 |---|---|
 | Server | Python 3.9+, Flask, Flask-SocketIO |
-| Video Processing | OpenCV, NumPy |
-| Virtual Camera | PyVirtualCam (OBS / Unity Capture) |
-| Tunnel | Cloudflare cloudflared, pyngrok |
-| Client | HTML5, CSS3, Vanilla JavaScript |
-| Transport | WebSocket binary (JPEG frames) |
+| Video Processing | OpenCV (Smart Framing & Resampling), NumPy |
+| Virtual Camera | PyVirtualCam (Unity Capture / OBS DirectShow) |
+| Desktop Dashboard | Modern Glassmorphism Web Deck, MJPEG Stream |
+| Tunnel & Network | Cloudflare cloudflared, Direct Local Wi-Fi & USB Cable Mode |
+| Client | HTML5 MediaDevices, Canvas, NoSleep.js, WakeLock API |
+| Transport | WebSocket binary (JPEG frames) + Bidirectional Command RPC |
 | Packaging | PyInstaller (single EXE) |
 
 ---

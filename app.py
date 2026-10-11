@@ -1,6 +1,6 @@
 import cv2
 import numpy as np
-from flask import Flask, render_template, request
+from flask import Flask, render_template, request, Response, jsonify
 from flask_socketio import SocketIO
 import pyvirtualcam
 import atexit
@@ -20,6 +20,10 @@ import os
 import sys
 import shutil
 import winreg
+import logging
+
+# Silence Werkzeug development server warning & routine HTTP request polling logs
+logging.getLogger('werkzeug').setLevel(logging.ERROR)
 
 app = Flask(__name__)
 app.config['TEMPLATES_AUTO_RELOAD'] = True
@@ -47,6 +51,62 @@ bandwidth_counter = 0
 last_bandwidth_time = time.time()
 current_bandwidth = 0  # in Mbps
 
+# Smart Framing & Host Preview
+framing_mode = 'crop'  # 'crop' (center-fill 16:9), 'fit' (pillarbox with blur), or 'stretch'
+latest_preview_frame = None
+latest_frame_event = threading.Event()
+
+def process_aspect_ratio(frame, target_width, target_height, mode='crop'):
+    """Preserve aspect ratio when mobile orientation or resolution differs from virtual camera.
+    
+    Modes:
+      - 'crop': Smart center-crop to 16:9 (fills entire webcam frame with zero distortion)
+      - 'fit': Broadcast-grade pillarbox with darkened & blurred ambient background
+      - 'stretch': Direct linear resize
+    """
+    src_h, src_w = frame.shape[:2]
+    target_aspect = target_width / target_height
+    src_aspect = src_w / src_h
+
+    # If aspect ratios are identical or within 1.5% tolerance, simple direct resize
+    if abs(src_aspect - target_aspect) < 0.015:
+        if (src_w, src_h) != (target_width, target_height):
+            return cv2.resize(frame, (target_width, target_height), interpolation=cv2.INTER_LINEAR)
+        return frame
+
+    if mode == 'crop':
+        if src_aspect > target_aspect:
+            # Source is wider than target: crop horizontal sides
+            new_w = int(src_h * target_aspect)
+            offset_x = (src_w - new_w) // 2
+            cropped = frame[:, offset_x:offset_x + new_w]
+        else:
+            # Source is taller than target (e.g. 9:16 portrait on 16:9 virtual cam): crop top/bottom
+            new_h = int(src_w / target_aspect)
+            offset_y = (src_h - new_h) // 2
+            cropped = frame[offset_y:offset_y + new_h, :]
+        return cv2.resize(cropped, (target_width, target_height), interpolation=cv2.INTER_LINEAR)
+
+    elif mode == 'fit':
+        # Studio pillarbox with lightning-fast ambient background blur (0.3ms vs 25ms)
+        small_bg = cv2.resize(frame, (320, 180), interpolation=cv2.INTER_NEAREST)
+        small_bg = cv2.GaussianBlur(small_bg, (15, 15), 0)
+        bg = cv2.resize(small_bg, (target_width, target_height), interpolation=cv2.INTER_LINEAR)
+        bg = cv2.convertScaleAbs(bg, alpha=0.5, beta=0)  # dim background
+
+        scale = min(target_width / src_w, target_height / src_h)
+        scaled_w = int(src_w * scale)
+        scaled_h = int(src_h * scale)
+        scaled = cv2.resize(frame, (scaled_w, scaled_h), interpolation=cv2.INTER_LINEAR)
+
+        x_start = (target_width - scaled_w) // 2
+        y_start = (target_height - scaled_h) // 2
+        bg[y_start:y_start + scaled_h, x_start:x_start + scaled_w] = scaled
+        return bg
+
+    else:
+        return cv2.resize(frame, (target_width, target_height), interpolation=cv2.INTER_LINEAR)
+
 def cleanup():
     """Cleanup function to close virtual camera on shutdown."""
     global cam
@@ -62,11 +122,16 @@ def frame_worker():
     """Worker thread to process frames asynchronously."""
     global frame_count, fps_counter, last_fps_time, current_fps
     global bandwidth_counter, last_bandwidth_time, current_bandwidth
+    global latest_preview_frame
 
     while True:
         try:
             # Get frame from queue (non-blocking with timeout)
             data = frame_queue.get(timeout=0.1)
+
+            # Store preview frame for laptop dashboard MJPEG feed
+            latest_preview_frame = data
+            latest_frame_event.set()
 
             # Track bandwidth
             frame_size = len(data)
@@ -91,17 +156,18 @@ def frame_worker():
                     current_fps = fps_counter
                     fps_counter = 0
                     last_fps_time = current_time
-                    # Send telemetry to all clients
+                    # Send telemetry to all clients (both phone and laptop dashboard)
                     socketio.emit('telemetry', {
                         'fps': current_fps,
                         'bandwidth': current_bandwidth,
                         'frame_count': frame_count,
-                        'client_count': client_count
-                    }, broadcast=True)
+                        'client_count': client_count,
+                        'framing_mode': framing_mode
+                    })
 
-                # Ensure frame matches virtual camera dimensions (resize only if mismatched)
-                if cam is not None and (frame_bgr.shape[1] != cam.width or frame_bgr.shape[0] != cam.height):
-                    frame_bgr = cv2.resize(frame_bgr, (cam.width, cam.height), interpolation=cv2.INTER_LINEAR)
+                # Ensure frame matches virtual camera dimensions with aspect-ratio preserving smart framing
+                if cam is not None:
+                    frame_bgr = process_aspect_ratio(frame_bgr, cam.width, cam.height, mode=framing_mode)
 
                 # Convert BGR to RGB (required by PyVirtualCam)
                 frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
@@ -298,21 +364,45 @@ def generate_self_signed_cert(ip_address):
     return cert_file, key_file
 
 def get_local_ip():
-    """Get local IPv4 address for auto-discovery."""
+    """Get local Wi-Fi / LAN IPv4 address (e.g. 192.168.x.x) for phone pairing.
+    
+    Uses an active outbound UDP probe to find the actual Wi-Fi or Ethernet adapter IP,
+    avoiding VPN/Tailscale/WSL virtual adapters.
+    """
+    # 1. Primary probe: Check active default gateway route to internet/DNS
     try:
-        # Get hostname and resolve to IP
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.settimeout(0.5)
+        s.connect(('8.8.8.8', 80))
+        local_ip = s.getsockname()[0]
+        s.close()
+        if local_ip and not local_ip.startswith('127.'):
+            return local_ip
+    except Exception:
+        pass
+
+    # 2. Secondary fallback: inspect all host IPs and pick true LAN subnets
+    try:
         hostname = socket.gethostname()
-        local_ip = socket.gethostbyname(hostname)
+        host_ips = socket.gethostbyname_ex(hostname)[2]
+        
+        # Priority A: Standard home/office Wi-Fi (192.168.x.x or 10.x.x.x)
+        for ip in host_ips:
+            if ip.startswith('192.168.') or ip.startswith('10.'):
+                return ip
+                
+        # Priority B: Any non-loopback, non-Tailscale/CGNAT (100.64.0.0/10) IP
+        for ip in host_ips:
+            if not ip.startswith('127.') and not ip.startswith('100.'):
+                return ip
 
-        # Verify it's an IPv4 address
-        if local_ip.startswith('127.') or local_ip == '::1':
-            # Fallback to 0.0.0.0 if localhost
-            return '0.0.0.0'
-
-        return local_ip
+        # Priority C: First available IP
+        if host_ips:
+            return host_ips[0]
     except Exception as e:
-        print(f"[WARN] Could not detect local IP: {e}")
-        return '0.0.0.0'
+        print(f"[WARN] IP auto-detection error: {e}")
+
+    return '127.0.0.1'
 
 def display_qr_code(url):
     """Generate and display QR code for the given URL."""
@@ -343,6 +433,23 @@ def display_qr_code(url):
 @app.route('/')
 def index():
     return render_template('index.html')
+
+@app.route('/dashboard')
+def dashboard():
+    """Laptop Studio Dashboard for remote management and preview monitor."""
+    return render_template('dashboard.html')
+
+@app.route('/preview_feed')
+def preview_feed():
+    """Low-latency MJPEG preview stream for the Laptop Studio Dashboard."""
+    def generate():
+        while True:
+            latest_frame_event.wait(timeout=1.0)
+            latest_frame_event.clear()
+            if latest_preview_frame is not None:
+                yield (b'--frame\r\n'
+                       b'Content-Type: image/jpeg\r\n\r\n' + latest_preview_frame + b'\r\n')
+    return Response(generate(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
 @app.route('/cert')
 def download_cert():
@@ -388,6 +495,30 @@ def handle_video_frame(data):
 def handle_ping(data):
     """Handle ping request for network quality monitoring."""
     socketio.emit('ping_response', data, to=request.sid)
+
+@socketio.on('remote_command')
+def handle_remote_command(data):
+    """Relay remote command from Laptop Dashboard to phone camera."""
+    socketio.emit('remote_command', data)
+
+@socketio.on('camera_state_update')
+def handle_camera_state_update(data):
+    """Relay phone camera state (zoom, torch, lens, battery) to Laptop Dashboard."""
+    socketio.emit('camera_state', data)
+
+@socketio.on('battery_telemetry')
+def handle_battery_telemetry(data):
+    """Relay phone battery status to Laptop Dashboard."""
+    socketio.emit('battery_telemetry', data)
+
+@socketio.on('set_framing_mode')
+def handle_set_framing_mode(data):
+    """Update aspect ratio framing mode ('crop', 'fit', 'stretch')."""
+    global framing_mode
+    mode = data.get('mode', 'crop')
+    if mode in ['crop', 'fit', 'stretch']:
+        framing_mode = mode
+        socketio.emit('framing_mode_changed', {'mode': framing_mode})
 
 def start_cloudflare_tunnel(port=5000):
     """Start a Cloudflare tunnel and return the public HTTPS URL.
@@ -581,7 +712,8 @@ if __name__ == '__main__':
     display_qr_code(connect_url)
 
     print("\nTo connect from your mobile device:")
-    print(f"  Open: {connect_url}")
+    print(f"  📱 Mobile URL: {connect_url}")
+    print(f"  💻 Laptop Dashboard: {'http://localhost:5000/dashboard' if not use_ssl else f'{server_url}/dashboard'}")
     if not use_ssl:
         print("  If you see a warning page, tap 'Visit Site'")
     else:
