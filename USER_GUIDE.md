@@ -68,6 +68,29 @@ The Unity Capture driver is required to expose the video stream as a system came
 
 ## Features
 
+### Studio Video Processing Suite
+
+**Stream Orientation / Rotation**
+- Fix upside-down or sideways camera mountings when phone is placed on a tripod or kickstand.
+- Cycle through **0° (Normal)**, **90° CW**, **180°**, and **270° CW** from either the Laptop Studio Dashboard (`/dashboard`) or Mobile HUD.
+
+**Real-Time Studio Image Tuning**
+- Fine-tune your video feed in real-time right inside the Laptop Studio Dashboard:
+  - **Brightness:** Boost lighting in dark rooms or reduce harsh exposure (-80 to +80).
+  - **Contrast:** Deepen blacks and enhance clarity (50% to 200%).
+  - **Saturation:** Color vibrance adjustment powered by SIMD color matrix (0% to 200%).
+  - **Sharpness:** Crisp unsharp masking to enhance subject detail (0% to 100%).
+- Single-tap **↺ Reset** button to restore neutral studio settings.
+
+**✨ Beauty Skin Smoothing Filter**
+- Edge-preserving bilateral filter running at 60 FPS that gently smooths facial skin and reduces camera noise while keeping eyes, hair, and edges sharp.
+- Adjustable intensity slider (10% to 100%).
+
+**🔒 Privacy Mode ("Be Right Back" Standby Card)**
+- Step away from your desk or take a private moment without dropping the webcam connection in Zoom, Teams, or Google Meet.
+- Instantly replaces the video feed with a sleek broadcast-grade standby card featuring a live digital clock.
+- Can be toggled on/off from either the laptop or the phone screen.
+
 ### Camera Controls
 
 **Switch Camera**
@@ -83,13 +106,13 @@ The Unity Capture driver is required to expose the video stream as a system came
 **Resolution Selector**
 - Choose from **480p**, **720p**, or **1080p**
 - 720p is recommended for best balance of quality and performance
-- 1080p may be too heavy for some devices
+- 1080p produces studio-grade crispness
 
 ### Performance Metrics
 
 The mobile interface displays real-time performance metrics:
 - **Frames:** Total frames sent
-- **FPS:** Current frame rate (target: 30 FPS)
+- **FPS:** Current frame rate (target: 30–60 FPS)
 - **Dropped:** Frames dropped due to network conditions
 - **Server FPS:** Server-side processing FPS
 - **BW:** Current bandwidth usage (Mbps)

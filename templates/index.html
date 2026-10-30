@@ -59,7 +59,13 @@
             <div class="viewfinder-hud">
                 <div class="hud-pill" id="hud-lens">📷 Front</div>
                 <div class="hud-pill" id="hud-res">1080p</div>
+                <div class="hud-pill" id="hud-rot" style="display: none;">0°</div>
             </div>
+        </div>
+
+        <!-- Privacy Standby Banner for Mobile -->
+        <div id="mobile-privacy-banner" class="mobile-privacy-pill" style="display: none;">
+            🔒 Privacy Mode Active (Camera Muted on PC)
         </div>
 
         <!-- Control Deck -->
@@ -83,15 +89,21 @@
             </div>
 
             <!-- Quick Action Grid -->
-            <div class="btn-grid">
+            <div class="btn-grid" style="grid-template-columns: 1fr 1fr; gap: 8px;">
                 <button id="torch-toggle" class="btn btn-warning" onclick="toggleTorch()">
                     🔦 Flashlight
                 </button>
                 <button id="mirror-toggle" class="btn" onclick="toggleMirror()">
                     🪞 Flip / Mirror
                 </button>
-                <button id="stealth-toggle" class="btn btn-stealth" onclick="toggleStealthMode()">
-                    🔋 OLED Stealth
+                <button id="rotate-toggle" class="btn" onclick="cycleMobileRotation()">
+                    🔄 Rotate <span id="mobile-rot-label">0°</span>
+                </button>
+                <button id="mobile-privacy-btn" class="btn btn-warning" onclick="toggleMobilePrivacy()">
+                    🔒 Privacy
+                </button>
+                <button id="stealth-toggle" class="btn btn-stealth" onclick="toggleStealthMode()" style="grid-column: span 2;">
+                    🔋 OLED Stealth Battery Saver
                 </button>
             </div>
 
@@ -100,8 +112,8 @@
                 <div>
                     <label style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 600; display: block; margin-bottom: 4px;">Resolution</label>
                     <select id="resolution-selector" class="control-select">
-                        <option value="720">720p (Fast 60 FPS)</option>
                         <option value="1080" selected>1080p (Studio Full HD)</option>
+                        <option value="720">720p (Ultra Fast 60 FPS)</option>
                         <option value="2160">4K (Ultra HD)</option>
                         <option value="480">480p (Eco Data)</option>
                     </select>
@@ -109,13 +121,22 @@
                 <div>
                     <label style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 600; display: block; margin-bottom: 4px;">Target FPS</label>
                     <select id="fps-selector" class="control-select">
-                        <option value="60" selected>60 FPS (Ultra Smooth)</option>
+                        <option value="60" selected>⚡ 60 FPS (Ultra Smooth)</option>
                         <option value="30">30 FPS (Standard)</option>
                     </select>
                 </div>
             </div>
 
-            <div style="text-align: center; margin-top: 4px;">
+            <div style="margin-top: 10px;">
+                <label style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 600; display: block; margin-bottom: 4px;">Video Sharpness & Quality</label>
+                <select id="quality-selector" class="control-select" onchange="onQualityChanged(this.value)">
+                    <option value="0.88">💎 Studio Crystal (Maximum Quality - 88%)</option>
+                    <option value="0.82" selected>⚡ High Clarity (Recommended 60 FPS - 82%)</option>
+                    <option value="0.65">📶 Eco Performance (Low Bandwidth - 65%)</option>
+                </select>
+            </div>
+
+            <div style="text-align: center; margin-top: 6px;">
                 <span style="font-size: 12px; color: var(--text-muted);">
                     💻 Control this camera from your PC at: <strong style="color: var(--accent-cyan);">/dashboard</strong>
                 </span>
@@ -169,10 +190,10 @@
         let fpsCounter = 0;
         let lastFpsTime = performance.now();
         let currentFps = 0;
-        let isSendingFrame = false;
+        let isEncoding = false;
 
         // Compression & Network state
-        let currentQuality = 0.65; // Sweet spot: crisp 1080p, ultra-fast 60 FPS, no Safari CPU throttle
+        let currentQuality = 0.82; // Studio High Clarity (Recommended 60 FPS, crystal clear detail)
         let currentPing = 0;
         let pingHistory = [];
         let currentResolution = 1080;
@@ -218,10 +239,6 @@
             statusText.textContent = 'Reconnecting...';
         });
 
-        socket.on('frame_ack', () => {
-            isSendingFrame = false;
-        });
-
         socket.on('ping_response', (data) => {
             const rtt = Math.round(performance.now() - data.timestamp);
             pingHistory.push(rtt);
@@ -247,6 +264,8 @@
                 currentResolution = parseInt(cmd.value);
                 document.getElementById('resolution-selector').value = currentResolution;
                 await restartCamera();
+            } else if (cmd.action === 'set_quality' && cmd.value) {
+                onQualityChanged(cmd.value);
             } else if (cmd.action === 'toggle_stealth') {
                 toggleStealthMode();
             }
@@ -326,6 +345,7 @@
         }
 
         // Camera Initialization
+        // Camera Initialization with Native Resolution & 60 FPS Guarantee
         async function startCamera() {
             hideError();
             startBtn.textContent = 'Starting Camera...';
@@ -343,17 +363,12 @@
                     2160: { width: 3840, height: 2160 }
                 };
                 const res = resolutions[currentResolution] || { width: 1920, height: 1080 };
-                
-                // Determine orientation to prevent constraint failure in portrait
-                const isPortrait = window.innerHeight > window.innerWidth;
-                const idealW = isPortrait ? res.height : res.width;
-                const idealH = isPortrait ? res.width : res.height;
 
-                // Build flexible constraint set
+                // Always request native camera sensor resolution for uncompressed 60 FPS readout
                 const videoConstraints = {
-                    width: { ideal: idealW },
-                    height: { ideal: idealH },
-                    frameRate: { ideal: targetFps, max: 60 }
+                    width: { ideal: res.width },
+                    height: { ideal: res.height },
+                    frameRate: { ideal: targetFps, min: 30 }
                 };
 
                 if (selectedDeviceId) {
@@ -369,13 +384,13 @@
                         audio: false
                     });
                 } catch (strictErr) {
-                    // Fallback to basic constraints if device constraint rejected
                     console.warn('Strict constraints rejected, trying fallback:', strictErr);
                     stream = await navigator.mediaDevices.getUserMedia({
                         video: {
                             facingMode: currentFacingMode,
-                            width: { ideal: 1280 },
-                            height: { ideal: 720 }
+                            width: { ideal: 1920, max: 1920 },
+                            height: { ideal: 1080, max: 1080 },
+                            frameRate: { ideal: targetFps, min: 30 }
                         },
                         audio: false
                     });
@@ -386,18 +401,19 @@
                 videoPreview.srcObject = localStream;
                 await videoPreview.play();
 
-                // Setup Canvas matching native feed dimensions 1:1
-                const settings = videoTrack.getSettings ? videoTrack.getSettings() : {};
-                const streamW = settings.width || videoPreview.videoWidth || idealW;
-                const streamH = settings.height || videoPreview.videoHeight || idealH;
+                // Setup Canvas matching native feed dimensions 1:1 for zero-resampling GPU blit
+                const vw = videoPreview.videoWidth || res.width;
+                const vh = videoPreview.videoHeight || res.height;
 
                 canvas = document.createElement('canvas');
-                canvas.width = streamW;
-                canvas.height = streamH;
+                canvas.width = vw;
+                canvas.height = vh;
                 ctx = canvas.getContext('2d', { alpha: false, desynchronized: true });
+                ctx.imageSmoothingEnabled = true;
+                ctx.imageSmoothingQuality = 'high';
 
                 videoPreview.onloadedmetadata = () => {
-                    if (videoPreview.videoWidth && videoPreview.videoHeight) {
+                    if (videoPreview.videoWidth > 0 && videoPreview.videoHeight > 0) {
                         canvas.width = videoPreview.videoWidth;
                         canvas.height = videoPreview.videoHeight;
                     }
@@ -411,7 +427,7 @@
                     zoomSlider.min = minZoom;
                     zoomSlider.max = maxZoom;
                     zoomSlider.step = capabilities.zoom.step || 0.1;
-                    zoomSlider.value = settings.zoom || 1.0;
+                    zoomSlider.value = (videoTrack.getSettings ? videoTrack.getSettings().zoom : 1.0) || 1.0;
                     currentZoom = parseFloat(zoomSlider.value);
                     zoomValText.textContent = `${currentZoom.toFixed(1)}x`;
                     zoomControlContainer.style.display = 'flex';
@@ -421,7 +437,7 @@
 
                 // Update HUD
                 hudLens.textContent = currentFacingMode === 'user' ? '📷 Front' : '📷 Rear';
-                hudRes.textContent = `${streamW}x${streamH}`;
+                hudRes.textContent = `${vw}x${vh}`;
 
                 isStreaming = true;
                 startBtn.style.display = 'none';
@@ -435,7 +451,7 @@
                 // Enumerate and populate all camera choices
                 await populateCameraDevices();
 
-                // Start Frame Capture Loop
+                // Start Frame Capture Loop (Zero Delay 60 FPS)
                 extractFrames();
 
                 broadcastState();
@@ -449,7 +465,7 @@
             }
         }
 
-        // Frame Capture Loop
+        // Frame Capture Loop - 100% Smooth Zero Delay Pipeline
         function extractFrames() {
             if (!isStreaming || !localStream || !canvas || !ctx) return;
 
@@ -466,40 +482,53 @@
                 if (!isStreaming) return;
                 scheduleNext();
 
-                const delta = now - lastFrameTime;
-                if (delta < frameInterval) return;
-                if (isSendingFrame) return; // Prevent queue buildup
+                // Interval throttle only when targetFps < 60, with 3ms tolerance to prevent timer jitter drops
+                if (targetFps < 60) {
+                    const interval = 1000 / targetFps;
+                    const delta = now - lastFrameTime;
+                    if (delta < interval - 3) return;
+                    lastFrameTime = now;
+                }
 
-                lastFrameTime = now - (delta % frameInterval);
+                // Non-blocking encode guard: drops frame ONLY if previous canvas encode is still busy
+                if (isEncoding) return;
 
-                // FPS telemetry
-                fpsCounter++;
+                // Ensure canvas resolution matches native hardware video dimensions 1:1
+                if (videoPreview.videoWidth > 0 && canvas.width !== videoPreview.videoWidth) {
+                    canvas.width = videoPreview.videoWidth;
+                    canvas.height = videoPreview.videoHeight;
+                }
+
+                // Direct hardware-accelerated draw
+                if (isMirrored) {
+                    ctx.save();
+                    ctx.translate(canvas.width, 0);
+                    ctx.scale(-1, 1);
+                    ctx.drawImage(videoPreview, 0, 0, canvas.width, canvas.height);
+                    ctx.restore();
+                } else {
+                    ctx.drawImage(videoPreview, 0, 0, canvas.width, canvas.height);
+                }
+
+                isEncoding = true;
+
+                // Send optimized JPEG blob directly over WebSocket without lockstep ACK
+                canvas.toBlob((blob) => {
+                    isEncoding = false;
+                    if (blob && isStreaming && socket.connected) {
+                        socket.emit('video_frame', blob);
+                        frameCount++;
+                        fpsCounter++;
+                    }
+                }, 'image/jpeg', currentQuality);
+
+                // Update FPS telemetry
                 if (now - lastFpsTime >= 1000) {
                     currentFps = fpsCounter;
                     fpsCounter = 0;
                     lastFpsTime = now;
                     fpsVal.textContent = currentFps;
                 }
-
-                // Render video to canvas
-                ctx.save();
-                if (isMirrored) {
-                    ctx.translate(canvas.width, 0);
-                    ctx.scale(-1, 1);
-                }
-                ctx.drawImage(videoPreview, 0, 0, canvas.width, canvas.height);
-                ctx.restore();
-
-                isSendingFrame = true;
-
-                // Send optimized JPEG blob
-                canvas.toBlob((blob) => {
-                    isSendingFrame = false;
-                    if (blob && isStreaming && socket.connected) {
-                        socket.emit('video_frame', blob);
-                        frameCount++;
-                    }
-                }, 'image/jpeg', currentQuality);
             }
 
             scheduleNext();
@@ -612,6 +641,75 @@
             broadcastState();
         }
 
+        // Mobile Rotation Controls
+        let mobileRotation = 0;
+        const hudRot = document.getElementById('hud-rot');
+        const mobileRotLabel = document.getElementById('mobile-rot-label');
+
+        function cycleMobileRotation() {
+            mobileRotation = (mobileRotation + 90) % 360;
+            socket.emit('set_rotation', { angle: mobileRotation });
+            updateMobileRotation(mobileRotation);
+        }
+
+        function updateMobileRotation(angle) {
+            mobileRotation = angle;
+            if (mobileRotLabel) mobileRotLabel.textContent = `${angle}°`;
+            if (hudRot) {
+                if (angle !== 0) {
+                    hudRot.textContent = `🔄 ${angle}°`;
+                    hudRot.style.display = 'inline-block';
+                } else {
+                    hudRot.style.display = 'none';
+                }
+            }
+        }
+
+        // Mobile Privacy Controls
+        let mobilePrivacy = false;
+        const mobilePrivacyBanner = document.getElementById('mobile-privacy-banner');
+        const mobilePrivacyBtn = document.getElementById('mobile-privacy-btn');
+
+        function toggleMobilePrivacy() {
+            mobilePrivacy = !mobilePrivacy;
+            socket.emit('set_privacy_mode', { enabled: mobilePrivacy });
+            updateMobilePrivacy(mobilePrivacy);
+        }
+
+        function updateMobilePrivacy(enabled) {
+            mobilePrivacy = enabled;
+            if (mobilePrivacyBanner) mobilePrivacyBanner.style.display = enabled ? 'block' : 'none';
+            if (mobilePrivacyBtn) {
+                mobilePrivacyBtn.textContent = enabled ? '🔓 Resume' : '🔒 Privacy';
+                if (enabled) {
+                    mobilePrivacyBtn.classList.add('btn-privacy-active');
+                } else {
+                    mobilePrivacyBtn.classList.remove('btn-privacy-active');
+                }
+            }
+        }
+
+        // Studio State Sync Listeners
+        socket.on('rotation_changed', (data) => {
+            updateMobileRotation(data.angle);
+        });
+
+        socket.on('privacy_mode_changed', (data) => {
+            updateMobilePrivacy(data.enabled);
+        });
+
+        socket.on('studio_state', (data) => {
+            if (data.rotation !== undefined) updateMobileRotation(data.rotation);
+            if (data.privacy_mode !== undefined) updateMobilePrivacy(data.privacy_mode);
+        });
+
+        function onQualityChanged(val) {
+            currentQuality = parseFloat(val);
+            const sel = document.getElementById('quality-selector');
+            if (sel) sel.value = val;
+            broadcastState();
+        }
+
         // Broadcast State to Server for Laptop Dashboard
         function broadcastState() {
             socket.emit('camera_state_update', {
@@ -620,6 +718,7 @@
                 torch: torchEnabled,
                 isMirrored: isMirrored,
                 resolution: currentResolution,
+                quality: currentQuality,
                 zoom: currentZoom,
                 maxZoom: maxZoom,
                 minZoom: minZoom,

@@ -2,7 +2,7 @@
 
 > Turn your iPhone or Android into a wireless webcam for Windows — no app install needed.
 
-[![Version](https://img.shields.io/badge/version-v1.2.0-brightgreen)](https://github.com/vicky-2005-18/IOSWebCam/releases/tag/v1.2.0)
+[![Version](https://img.shields.io/badge/version-v1.3.0-brightgreen)](https://github.com/vicky-2005-18/IOSWebCam/releases/tag/v1.3.0)
 [![Python](https://img.shields.io/badge/Python-3.9%2B-blue?logo=python)](https://python.org)
 [![Flask](https://img.shields.io/badge/Flask-SocketIO-green?logo=flask)](https://flask-socketio.readthedocs.io)
 [![Platform](https://img.shields.io/badge/Platform-Windows-blue?logo=windows)](https://github.com/vicky-2005-18/IOSWebCam)
@@ -18,6 +18,7 @@ Uses your phone's browser as a wireless camera and streams it to your PC as a **
 - **Works on any phone** — iPhone, Android, any browser
 - **Works from anywhere** — auto HTTPS tunnel, no same-WiFi required
 - **Virtual camera output** — appears as a real webcam in all apps
+- **Studio Video Suite** — real-time brightness/contrast tuning, 90°/180°/270° stream rotation, bilateral beauty smoothing, and privacy "Be Right Back" standby screen
 
 ---
 
@@ -78,6 +79,8 @@ No manual setup needed — just run and scan the QR code.
 | Feature | Action |
 |---|---|
 | 📷 Multi-Lens Switcher | Select Ultra-Wide (0.5x), Main (1x), Telephoto, or Front camera |
+| 🔄 Stream Rotation | 0°, 90°, 180°, 270° orientation cycle directly on screen |
+| 🔒 Privacy Mute | Instantly mute camera and stream a sleek standby card to PC |
 | 🔍 Pinch-to-Zoom & Slider | Hardware digital zoom adjustment directly on screen |
 | 🔋 OLED Stealth Mode | Dims screen completely to prevent phone overheating & battery drain |
 | 🔦 Flashlight / Torch | Toggle torch on rear camera |
@@ -89,9 +92,14 @@ No manual setup needed — just run and scan the QR code.
 ## 💻 Laptop Studio Dashboard (`/dashboard`)
 
 Access your dedicated desktop control center in your browser at `http://localhost:5000/dashboard`:
-- **Live Preview Monitor**: Real-time low-latency stream preview right on your laptop screen.
-- **Bi-Directional Remote Control**: Flip camera, toggle torch, adjust zoom, and change resolution directly from your PC without touching the phone.
+- **Live Preview Monitor**: Real-time WYSIWYG low-latency stream preview showing exact framed and filtered output.
+- **🎨 Studio Video Processing Suite**:
+  - **Stream Rotation (0°, 90°, 180°, 270°)**: Hardware-accelerated orientation correction for horizontal mounts and tripods.
+  - **Live Image Tuning**: Real-time Brightness, Contrast, Saturation (SIMD color matrix), and Sharpness controls with neutral reset.
+  - **✨ Beauty Skin Smoothing**: Bilateral edge-preserving skin softening running in real-time at 60 FPS.
+  - **🔒 Privacy Shade ("Be Right Back")**: Instantly mute camera feed and broadcast a professional studio card with digital timecode to Zoom/Teams without disconnecting.
 - **Smart Aspect-Ratio Framing**: Switch between **Smart 16:9 Crop**, **Fit with Ambient Blur**, or **Stretch** modes.
+- **Bi-Directional Remote Control**: Flip camera, toggle torch, adjust zoom, and change resolution directly from your PC.
 - **Phone Health Telemetry**: Live phone battery percentage, charging state, FPS, and bandwidth.
 - **📸 Snapshot Tool**: Save full-resolution stills instantly.
 
@@ -103,11 +111,13 @@ Access your dedicated desktop control center in your browser at `http://localhos
 📱 Phone (Browser)                    💻 PC / Laptop Host
 ┌───────────────────────┐            ┌──────────────────────────────────────────────┐
 │  HTML5 Camera Stream  │  WebSocket │  Flask-SocketIO Server                       │
-│  - Multi-lens picker  │ ──────────►│  - Smart Framing (16:9 crop / ambient blur)  │
-│  - Hardware zoom      │            │  - PyVirtualCam (1080p @ 60 FPS DirectShow)   │
-│  - OLED Stealth mode  │◄───────────│  - Studio Dashboard (/dashboard)             │
-│  - Low-lag binary blob│  Commands  │  - Low-latency preview feed (/preview_feed)  │
-└───────────────────────┘            └──────────────────────┬───────────────────────┘
+│  - Multi-lens picker  │ ──────────►│  - Studio Video Processing (Rotate/Tune/Blur)│
+│  - Hardware zoom      │            │  - Privacy "Be Right Back" Standby Engine    │
+│  - OLED Stealth mode  │◄───────────│  - Smart Framing (16:9 crop / ambient blur)  │
+│  - Low-lag binary blob│  Commands  │  - PyVirtualCam (1080p @ 60 FPS DirectShow)   │
+└───────────────────────┘            │  - Studio Dashboard (/dashboard)             │
+                                     │  - Low-latency preview feed (/preview_feed)  │
+                                     └──────────────────────┬───────────────────────┘
                                                             │
                                              ┌──────────────▼──────────────┐
                                              │    Virtual Webcam Driver    │

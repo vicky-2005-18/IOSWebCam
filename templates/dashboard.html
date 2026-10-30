@@ -52,6 +52,12 @@
                         <span class="hud-pill" id="monitor-bw-pill">0.0 Mbps</span>
                     </div>
 
+                    <!-- Privacy Mode Monitor Banner -->
+                    <div id="privacy-monitor-banner" class="privacy-badge-banner" style="display: none;">
+                        <span class="privacy-dot"></span>
+                        <span>🔒 PRIVACY SHADE ACTIVE (CAMERA MUTED)</span>
+                    </div>
+
                     <div style="position: absolute; top: 14px; right: 16px;">
                         <button class="btn btn-stealth" onclick="toggleFullscreen()" style="padding: 6px 10px; font-size: 12px;">
                             ⛶ Fullscreen
@@ -77,10 +83,15 @@
                         </div>
                     </div>
 
-                    <!-- Snapshot button -->
-                    <button class="btn btn-primary" onclick="captureSnapshot()" style="padding: 8px 16px; font-size: 13px;">
-                        📸 Snapshot
-                    </button>
+                    <!-- Privacy & Snapshot buttons -->
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <button id="btn-privacy-toggle" class="btn btn-warning" onclick="togglePrivacyMode()" style="padding: 8px 14px; font-size: 13px;" title="Mute camera and stream broadcast 'Be Right Back' card to Zoom/Teams">
+                            🔒 Privacy Mode
+                        </button>
+                        <button class="btn btn-primary" onclick="captureSnapshot()" style="padding: 8px 16px; font-size: 13px;">
+                            📸 Snapshot
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -112,6 +123,62 @@
                             <span class="stat-value" id="stat-frames">0</span>
                         </div>
                     </div>
+                </div>
+
+                <!-- Studio Video Processing & Effects -->
+                <div class="glass-panel deck-section">
+                    <div class="section-header">
+                        <span>Studio Video Processing</span>
+                        <button class="btn-reset-adjust" onclick="resetImageAdjustments()" title="Reset adjustments to neutral defaults">
+                            ↺ Reset
+                        </button>
+                    </div>
+
+                    <!-- Stream Orientation Rotation -->
+                    <div style="margin-bottom: 12px;">
+                        <label style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 600; display: block; margin-bottom: 6px;">Stream Rotation</label>
+                        <div class="rotation-selector">
+                            <button id="btn-rot-0" class="rotation-btn active" onclick="setRotation(0)">0°</button>
+                            <button id="btn-rot-90" class="rotation-btn" onclick="setRotation(90)">90° ↻</button>
+                            <button id="btn-rot-180" class="rotation-btn" onclick="setRotation(180)">180°</button>
+                            <button id="btn-rot-270" class="rotation-btn" onclick="setRotation(270)">270° ↺</button>
+                        </div>
+                    </div>
+
+                    <!-- Image Tuning Sliders -->
+                    <div class="slider-row">
+                        <span>☀️ Brightness</span>
+                        <strong id="val-brightness">0</strong>
+                    </div>
+                    <input type="range" id="slider-brightness" class="studio-slider" min="-80" max="80" step="1" value="0" oninput="onImageAdjustInput('brightness', this.value)">
+
+                    <div class="slider-row">
+                        <span>🌓 Contrast</span>
+                        <strong id="val-contrast">100%</strong>
+                    </div>
+                    <input type="range" id="slider-contrast" class="studio-slider" min="0.5" max="2.0" step="0.05" value="1.0" oninput="onImageAdjustInput('contrast', this.value)">
+
+                    <div class="slider-row">
+                        <span>🎨 Saturation</span>
+                        <strong id="val-saturation">100%</strong>
+                    </div>
+                    <input type="range" id="slider-saturation" class="studio-slider" min="0.0" max="2.0" step="0.05" value="1.0" oninput="onImageAdjustInput('saturation', this.value)">
+
+                    <div class="slider-row">
+                        <span>🗡️ Sharpness</span>
+                        <strong id="val-sharpness">0%</strong>
+                    </div>
+                    <input type="range" id="slider-sharpness" class="studio-slider" min="0" max="100" step="5" value="0" oninput="onImageAdjustInput('sharpness', this.value)">
+
+                    <!-- Beauty / Skin Smoothing -->
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 14px;">
+                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 12px; font-weight: 600; color: var(--text-primary);">
+                            <input type="checkbox" id="check-beauty" onchange="toggleBeautyFilter(this.checked)" style="accent-color: var(--accent-purple); width: 15px; height: 15px; cursor: pointer;">
+                            <span>✨ Beauty Skin Smoothing</span>
+                        </label>
+                        <strong id="val-beauty" style="color: var(--accent-purple); font-size: 12px;">50%</strong>
+                    </div>
+                    <input type="range" id="slider-beauty" class="studio-slider" min="0.1" max="1.0" step="0.05" value="0.5" oninput="onBeautyStrengthInput(this.value)" style="margin-top: 6px;">
                 </div>
 
                 <!-- Remote Camera Controls -->
@@ -153,10 +220,20 @@
                     <div style="margin-top: 14px;">
                         <label style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 600; display: block; margin-bottom: 4px;">Remote Resolution</label>
                         <select id="remote-res-select" class="control-select" onchange="onRemoteResChanged(this.value)">
-                            <option value="720">720p (Ultra Fast 60 FPS)</option>
                             <option value="1080" selected>1080p (Studio Full HD)</option>
+                            <option value="720">720p (Ultra Fast 60 FPS)</option>
                             <option value="2160">4K (Ultra HD)</option>
                             <option value="480">480p (Eco Data)</option>
+                        </select>
+                    </div>
+
+                    <!-- Remote Stream Quality Change -->
+                    <div style="margin-top: 14px;">
+                        <label style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 600; display: block; margin-bottom: 4px;">Video Sharpness & Quality</label>
+                        <select id="remote-quality-select" class="control-select" onchange="onRemoteQualityChanged(this.value)">
+                            <option value="0.88">💎 Studio Crystal (Maximum Quality - 88%)</option>
+                            <option value="0.82" selected>⚡ High Clarity (Recommended 60 FPS - 82%)</option>
+                            <option value="0.65">📶 Eco Performance (Low Bandwidth - 65%)</option>
                         </select>
                     </div>
                 </div>
@@ -219,10 +296,37 @@
         const remoteStealthBtn = document.getElementById('remote-stealth-btn');
         const usbModal = document.getElementById('usb-modal');
 
+        // Studio Video Processing Elements
+        const privacyBanner = document.getElementById('privacy-monitor-banner');
+        const privacyToggleBtn = document.getElementById('btn-privacy-toggle');
+        const sliderBrightness = document.getElementById('slider-brightness');
+        const sliderContrast = document.getElementById('slider-contrast');
+        const sliderSaturation = document.getElementById('slider-saturation');
+        const sliderSharpness = document.getElementById('slider-sharpness');
+        const valBrightness = document.getElementById('val-brightness');
+        const valContrast = document.getElementById('val-contrast');
+        const valSaturation = document.getElementById('val-saturation');
+        const valSharpness = document.getElementById('val-sharpness');
+        const checkBeauty = document.getElementById('check-beauty');
+        const sliderBeauty = document.getElementById('slider-beauty');
+        const valBeauty = document.getElementById('val-beauty');
+
         let isPhoneConnected = false;
+        let isPrivacyMode = false;
+        let currentRotation = 0;
+        let adjustDebounceTimer = null;
 
         socket.on('connect', () => {
             console.log('Connected to host socket');
+        });
+
+        // Initial Studio State Sync
+        socket.on('studio_state', (state) => {
+            if (state.framing_mode) updateFramingButtons(state.framing_mode);
+            if (state.rotation !== undefined) updateRotationUI(state.rotation);
+            if (state.image_adjustments) updateImageAdjustmentsUI(state.image_adjustments);
+            if (state.beauty_filter) updateBeautyUI(state.beauty_filter);
+            if (state.privacy_mode !== undefined) updatePrivacyUI(state.privacy_mode);
         });
 
         // Telemetry Stream from app.py
@@ -247,9 +351,9 @@
                 connText.textContent = 'Waiting for Phone...';
             }
 
-            if (data.framing_mode) {
-                updateFramingButtons(data.framing_mode);
-            }
+            if (data.framing_mode) updateFramingButtons(data.framing_mode);
+            if (data.rotation !== undefined && data.rotation !== currentRotation) updateRotationUI(data.rotation);
+            if (data.privacy_mode !== undefined && data.privacy_mode !== isPrivacyMode) updatePrivacyUI(data.privacy_mode);
         });
 
         // Phone Camera State Updates
@@ -272,6 +376,10 @@
             if (state.resolution !== undefined) {
                 document.getElementById('remote-res-select').value = state.resolution;
             }
+            if (state.quality !== undefined) {
+                const qSelect = document.getElementById('remote-quality-select');
+                if (qSelect) qSelect.value = state.quality;
+            }
         });
 
         // Phone Battery Updates
@@ -281,6 +389,22 @@
 
         socket.on('framing_mode_changed', (data) => {
             updateFramingButtons(data.mode);
+        });
+
+        socket.on('rotation_changed', (data) => {
+            updateRotationUI(data.angle);
+        });
+
+        socket.on('image_adjustments_changed', (data) => {
+            updateImageAdjustmentsUI(data);
+        });
+
+        socket.on('beauty_filter_changed', (data) => {
+            updateBeautyUI(data);
+        });
+
+        socket.on('privacy_mode_changed', (data) => {
+            updatePrivacyUI(data.enabled);
         });
 
         function sendRemoteCmd(action, value = null) {
@@ -296,6 +420,10 @@
             sendRemoteCmd('set_resolution', val);
         }
 
+        function onRemoteQualityChanged(val) {
+            sendRemoteCmd('set_quality', parseFloat(val));
+        }
+
         function setFramingMode(mode) {
             socket.emit('set_framing_mode', { mode: mode });
             updateFramingButtons(mode);
@@ -309,6 +437,119 @@
                     else btn.classList.remove('active');
                 }
             });
+        }
+
+        // Stream Rotation Controls
+        function setRotation(angle) {
+            currentRotation = angle;
+            socket.emit('set_rotation', { angle: angle });
+            updateRotationUI(angle);
+        }
+
+        function updateRotationUI(angle) {
+            currentRotation = angle;
+            [0, 90, 180, 270].forEach(deg => {
+                const btn = document.getElementById(`btn-rot-${deg}`);
+                if (btn) {
+                    if (deg === angle) btn.classList.add('active');
+                    else btn.classList.remove('active');
+                }
+            });
+        }
+
+        // Image Adjustments Controls
+        function onImageAdjustInput(type, val) {
+            if (type === 'brightness') valBrightness.textContent = val > 0 ? `+${val}` : val;
+            else if (type === 'contrast') valContrast.textContent = `${Math.round(parseFloat(val) * 100)}%`;
+            else if (type === 'saturation') valSaturation.textContent = `${Math.round(parseFloat(val) * 100)}%`;
+            else if (type === 'sharpness') valSharpness.textContent = `${val}%`;
+
+            clearTimeout(adjustDebounceTimer);
+            adjustDebounceTimer = setTimeout(() => {
+                socket.emit('set_image_adjustments', {
+                    brightness: parseInt(sliderBrightness.value),
+                    contrast: parseFloat(sliderContrast.value),
+                    saturation: parseFloat(sliderSaturation.value),
+                    sharpness: parseInt(sliderSharpness.value)
+                });
+            }, 30);
+        }
+
+        function resetImageAdjustments() {
+            sliderBrightness.value = 0;
+            sliderContrast.value = 1.0;
+            sliderSaturation.value = 1.0;
+            sliderSharpness.value = 0;
+            valBrightness.textContent = '0';
+            valContrast.textContent = '100%';
+            valSaturation.textContent = '100%';
+            valSharpness.textContent = '0%';
+            socket.emit('reset_image_adjustments');
+        }
+
+        function updateImageAdjustmentsUI(adj) {
+            if (adj.brightness !== undefined) {
+                sliderBrightness.value = adj.brightness;
+                valBrightness.textContent = adj.brightness > 0 ? `+${adj.brightness}` : adj.brightness;
+            }
+            if (adj.contrast !== undefined) {
+                sliderContrast.value = adj.contrast;
+                valContrast.textContent = `${Math.round(parseFloat(adj.contrast) * 100)}%`;
+            }
+            if (adj.saturation !== undefined) {
+                sliderSaturation.value = adj.saturation;
+                valSaturation.textContent = `${Math.round(parseFloat(adj.saturation) * 100)}%`;
+            }
+            if (adj.sharpness !== undefined) {
+                sliderSharpness.value = adj.sharpness;
+                valSharpness.textContent = `${adj.sharpness}%`;
+            }
+        }
+
+        // Beauty Filter Controls
+        function toggleBeautyFilter(enabled) {
+            socket.emit('set_beauty_filter', {
+                enabled: enabled,
+                strength: parseFloat(sliderBeauty.value)
+            });
+        }
+
+        function onBeautyStrengthInput(val) {
+            valBeauty.textContent = `${Math.round(parseFloat(val) * 100)}%`;
+            if (checkBeauty.checked) {
+                socket.emit('set_beauty_filter', {
+                    enabled: true,
+                    strength: parseFloat(val)
+                });
+            }
+        }
+
+        function updateBeautyUI(beauty) {
+            if (beauty.enabled !== undefined) checkBeauty.checked = beauty.enabled;
+            if (beauty.strength !== undefined) {
+                sliderBeauty.value = beauty.strength;
+                valBeauty.textContent = `${Math.round(parseFloat(beauty.strength) * 100)}%`;
+            }
+        }
+
+        // Privacy Mode Controls
+        function togglePrivacyMode() {
+            isPrivacyMode = !isPrivacyMode;
+            socket.emit('set_privacy_mode', { enabled: isPrivacyMode });
+            updatePrivacyUI(isPrivacyMode);
+        }
+
+        function updatePrivacyUI(enabled) {
+            isPrivacyMode = enabled;
+            if (enabled) {
+                privacyBanner.style.display = 'inline-flex';
+                privacyToggleBtn.textContent = '🔓 Resume Feed';
+                privacyToggleBtn.classList.add('btn-privacy-active');
+            } else {
+                privacyBanner.style.display = 'none';
+                privacyToggleBtn.textContent = '🔒 Privacy Mode';
+                privacyToggleBtn.classList.remove('btn-privacy-active');
+            }
         }
 
         function handlePreviewError() {

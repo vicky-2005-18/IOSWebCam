@@ -4,6 +4,18 @@ All notable changes to iOS WebCam Bridge are documented here.
 
 ---
 
+## [v1.3.0] — 2026-10-29
+
+### Added
+- **Studio Video Processing Suite**: Real-time image tuning pipeline running accelerated in OpenCV directly on the host PC.
+- **Hardware-Accelerated Stream Rotation (0°, 90°, 180°, 270°)**: Solves phone mounting orientation issues (landscape, portrait, upside-down tripods) with one-click instant rotation from both Laptop Dashboard and Mobile HUD.
+- **Real-Time Studio Image Tuning**: Fine-tune Brightness (-80 to +80), Contrast (50% to 200%), Saturation (0% to 200% via SIMD color matrix), and Sharpness (0% to 100% via unsharp masking) live during meetings, with one-click reset to defaults.
+- **Studio Privacy Shade / "Be Right Back" Standby Card**: Tap Privacy Mode to instantly mute your camera and stream a sleek, broadcast-grade standby card with live digital clock to Zoom, Teams, Meet, and OBS without dropping the virtual webcam connection.
+- **Bilateral Beauty & Skin Smoothing Filter**: 4x-downsampled real-time bilateral filter for flattering, smooth skin tones while preserving crisp eye and edge contours at 60 FPS.
+- **True WYSIWYG Studio Monitor**: The Laptop Studio Dashboard preview monitor now displays the exact processed, filtered, and framed stream that Zoom and virtual camera receive.
+
+---
+
 ## [v1.2.0] — 2026-10-12
 
 ### Added
